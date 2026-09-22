@@ -83,7 +83,7 @@ function Hero() {
 
       <div className="relative z-10 mx-auto max-w-3xl px-4 pt-24 pb-16 text-center sm:px-6">
         <span className="inline-block rounded-full border border-accent/40 bg-accent/10 px-4 py-1.5 text-xs font-bold tracking-widest text-accent uppercase">
-          Hambúrgueres artesanais • Desde 2015
+          Lanchonete
         </span>
         <h1 className="font-display mt-6 text-8xl leading-none tracking-wide text-foreground text-glow sm:text-[10rem]">
           LILHÃO
