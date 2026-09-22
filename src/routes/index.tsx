@@ -6,33 +6,6 @@ import prodBurger from "@/assets/prod-burger.jpg";
 import prodHotdog from "@/assets/prod-hotdog.jpg";
 import prodFries from "@/assets/prod-fries.jpg";
 
-export const Route = createFileRoute("/")({
-  head: () => ({
-    meta: [
-      { title: "Lilhão — Lanchonete | Hambúrgueres e Lanches Artesanais" },
-      {
-        name: "description",
-        content:
-          "A lanchonete Lilhão: hambúrgueres artesanais, cachorro-quente caprichado e batatas crocantes. Peça pelo WhatsApp e saboreie.",
-      },
-      { property: "og:title", content: "Lilhão — Lanchonete" },
-      {
-        property: "og:description",
-        content:
-          "Hambúrgueres artesanais, cachorro-quente e batatas crocantes. Peça já o seu!",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
- { name: "twitter:title", content: "Lilhão — Lanchonete" },
-      {
-        name: "twitter:description",
-        content:
-          "Hambúrgueres artesanais, cachorro-quente e batatas crocantes. Peça já o seu!",
-      },
-    ],
-  }),
-});
-
 const WHATSAPP_URL = "https://wa.me/5511999999999";
 
 const produtos = [
@@ -66,7 +39,7 @@ function Header() {
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-        <a href="#" className="font-display text-3xl tracking-wide text-foreground">
+        <a href="#inicio" className="font-display text-3xl tracking-wide text-foreground">
           Lilhão<span className="text-primary">.</span>
         </a>
         <nav className="hidden items-center gap-8 text-sm font-semibold text-muted-foreground sm:flex">
@@ -95,7 +68,10 @@ function Header() {
 
 function Hero() {
   return (
-    <section id="inicio" className="relative flex min-h-svh items-center justify-center overflow-hidden">
+    <section
+      id="inicio"
+      className="relative flex min-h-svh items-center justify-center overflow-hidden"
+    >
       <img
         src={heroBurger}
         alt="Hambúrguer artesanal do Lilhão com queijo derretido e bacon"
@@ -131,7 +107,10 @@ function Hero() {
 
 function Destaques() {
   return (
-    <section id="destaques" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-20 sm:px-6">
+    <section
+      id="destaques"
+      className="mx-auto max-w-6xl scroll-mt-20 px-4 py-20 sm:px-6"
+    >
       <div className="text-center">
         <span className="text-xs font-bold tracking-widest text-primary uppercase">
           Direto da chapa
@@ -214,7 +193,10 @@ const contatos = [
 
 function Contato() {
   return (
-    <section id="contato" className="scroll-mt-20 border-t border-border/60 bg-card/40">
+    <section
+      id="contato"
+      className="scroll-mt-20 border-t border-border/60 bg-card/40"
+    >
       <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
         <div className="text-center">
           <span className="text-xs font-bold tracking-widest text-primary uppercase">
@@ -289,6 +271,6 @@ function Index() {
   );
 }
 
-export default Index;
-
-Route.update({ component: Index });
+export const Route = createFileRoute("/")({
+  component: Index,
+});
