@@ -1,12 +1,104 @@
-/* Product list container (third direct block in the catalog section). */
-#cardapio > div:nth-child(3) {
-  display: grid !important;
-  grid-template-columns: minmax(0, 1fr) !important;
-  gap: 12px !important;
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --font-sans: "Sora", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Bebas Neue", Impact, sans-serif;
+  --color-background: #080909;
+  --color-foreground: #ffffff;
+  --color-primary: #ffc400;
+  --color-primary-foreground: #080909;
 }
 
-@media (min-width: 760px) {
-  #cardapio > div:nth-child(3) {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+:root {
+  color-scheme: dark;
+  font-family: "Sora", ui-sans-serif, system-ui, sans-serif;
+  background: #080909;
+  color: #fff;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: #080909;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #080909;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  cursor: pointer;
+}
+
+img,
+video {
+  display: block;
+  max-width: 100%;
+}
+
+/* Keep the hero media above its background and below the text. */
+#inicio > video,
+#inicio > img {
+  z-index: 0 !important;
+}
+
+#inicio > .bg-gradient-to-b {
+  z-index: 1 !important;
+}
+
+#inicio > div.relative {
+  z-index: 2;
+}
+
+/* Compact, horizontal product rows: avoid oversized menu cards on mobile. */
+#cardapio article {
+  min-width: 0;
+}
+
+#cardapio article img {
+  object-position: center;
+}
+
+#cardapio input {
+  color: #fff;
+}
+
+#cardapio input::placeholder {
+  color: rgb(255 255 255 / 42%);
+}
+
+@media (max-width: 640px) {
+  #cardapio > section {
+    margin-bottom: 1.5rem;
+  }
+
+  #cardapio article {
+    min-height: 104px;
   }
 }
