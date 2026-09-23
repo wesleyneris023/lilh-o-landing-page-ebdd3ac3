@@ -116,3 +116,8 @@ nav button span[aria-live="polite"] {
 body > div button.fixed[aria-label^="Abrir sacola"] span[aria-live="polite"] {
   display: grid !important;
 }
+
+/* Never let the floating cart cover the subtotal/checkout inside the open drawer. */
+body:has([role="dialog"][aria-label="Minha sacola"]) button[aria-label^="Abrir sacola"] {
+  display: none !important;
+}
