@@ -138,7 +138,7 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Keep the admin shortcut here; the storefront owns the single, quantity-badged floating cart. */}
+      {/* Keep the admin shortcut at the upper-left, below the storefront header; the storefront owns the single, quantity-badged floating cart. */}
       {!isAdmin && (
         <>
           <style>{`header > div > div > button:first-child { display: none !important; }`}</style>
@@ -146,7 +146,7 @@ function RootComponent() {
             to="/admin"
             aria-label="Abrir Dashboard administrativo"
             title="Dashboard administrativo"
-            className="fixed right-[4.5rem] top-3 z-[60] grid size-10 place-items-center rounded-full border-2 border-[#ffc400] bg-[#ffc400] text-sm font-black text-black shadow-lg transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[#ffc400]"
+            className="fixed left-4 top-20 z-[60] grid size-10 place-items-center rounded-full border-2 border-[#ffc400] bg-[#ffc400] text-sm font-black text-black shadow-lg transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[#ffc400]"
           >
             L!
           </Link>
