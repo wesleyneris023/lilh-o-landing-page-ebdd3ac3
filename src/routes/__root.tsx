@@ -8,6 +8,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
+import { ShoppingBag } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
@@ -138,14 +139,29 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Admin shortcut returns to the public storefront; public pages keep the admin shortcut. */}
-      <Link
-        to={isAdmin ? "/" : "/admin"}
-        aria-label={isAdmin ? "Voltar à página inicial da loja" : "Abrir painel administrativo"}
-        className="fixed left-3 top-[76px] z-[60] inline-flex min-h-9 items-center gap-2 rounded-full border border-[#ffc400]/60 bg-[#111314]/95 px-4 text-xs font-extrabold text-[#ffc400] shadow-lg backdrop-blur transition hover:bg-[#ffc400] hover:text-black focus:outline-none focus:ring-2 focus:ring-[#ffc400]"
-      >
-        {isAdmin ? "← Voltar à loja" : "Painel"}
-      </Link>
+      {/* On the storefront, the profile shortcut opens the admin dashboard and the floating bag opens the existing cart drawer. */}
+      {!isAdmin && (
+        <>
+          <style>{`header > div > div > button:first-child { display: none !important; }`}</style>
+          <Link
+            to="/admin"
+            aria-label="Abrir Dashboard administrativo"
+            title="Dashboard administrativo"
+            className="fixed right-[4.5rem] top-3 z-[60] grid size-10 place-items-center rounded-full border-2 border-[#ffc400] bg-[#ffc400] text-sm font-black text-black shadow-lg transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[#ffc400]"
+          >
+            L!
+          </Link>
+          <button
+            type="button"
+            aria-label="Abrir sacola de pedidos"
+            title="Minha sacola"
+            onClick={() => document.querySelector<HTMLButtonElement>("header button")?.click()}
+            className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] right-4 z-[60] grid size-14 place-items-center rounded-full border border-black/10 bg-[#ffc400] text-black shadow-[0_8px_30px_rgba(0,0,0,.45)] transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-white md:bottom-6"
+          >
+            <ShoppingBag className="size-6" />
+          </button>
+        </>
+      )}
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
     </QueryClientProvider>
