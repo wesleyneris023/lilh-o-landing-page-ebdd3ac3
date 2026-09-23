@@ -102,3 +102,12 @@ video {
     min-height: 104px;
   }
 }
+
+/* Cart UX: the floating bag is the single visible cart counter on mobile. */
+header > div > div > button:first-child {
+  display: none !important;
+}
+
+nav button > span.relative > span {
+  display: none !important;
+}
