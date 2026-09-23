@@ -103,11 +103,16 @@ video {
   }
 }
 
-/* Cart UX: the floating bag is the single visible cart counter on mobile. */
-header > div > div > button:first-child {
+/* Keep a single cart control: only the floating bag displays the item count. */
+header button[aria-label^="Abrir sacola"] {
   display: none !important;
 }
 
-nav button > span.relative > span {
+nav button span[aria-live="polite"] {
   display: none !important;
+}
+
+/* Retain the quantity badge on the floating cart button itself. */
+body > div button.fixed[aria-label^="Abrir sacola"] span[aria-live="polite"] {
+  display: grid !important;
 }
