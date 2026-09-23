@@ -8,7 +8,6 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { ShoppingBag } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
@@ -139,7 +138,7 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* On the storefront, the profile shortcut opens the admin dashboard and the floating bag opens the existing cart drawer. */}
+      {/* Keep the admin shortcut here; the storefront owns the single, quantity-badged floating cart. */}
       {!isAdmin && (
         <>
           <style>{`header > div > div > button:first-child { display: none !important; }`}</style>
@@ -151,15 +150,6 @@ function RootComponent() {
           >
             L!
           </Link>
-          <button
-            type="button"
-            aria-label="Abrir sacola de pedidos"
-            title="Minha sacola"
-            onClick={() => document.querySelector<HTMLButtonElement>("header button")?.click()}
-            className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] right-4 z-[60] grid size-14 place-items-center rounded-full border border-black/10 bg-[#ffc400] text-black shadow-[0_8px_30px_rgba(0,0,0,.45)] transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-white md:bottom-6"
-          >
-            <ShoppingBag className="size-6" />
-          </button>
         </>
       )}
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
