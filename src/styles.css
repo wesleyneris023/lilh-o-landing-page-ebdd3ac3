@@ -121,3 +121,37 @@ body > div button.fixed[aria-label^="Abrir sacola"] span[aria-live="polite"] {
 body:has([role="dialog"][aria-label="Minha sacola"]) button[aria-label^="Abrir sacola"] {
   display: none !important;
 }
+
+/* Mobile bottom navigation: Início, Categorias, Pedidos e Conta. */
+@media (max-width: 767px) {
+  nav.fixed.inset-x-0.bottom-0 > a,
+  nav.fixed.inset-x-0.bottom-0 > button {
+    font-size: 0 !important;
+    line-height: 1;
+  }
+
+  nav.fixed.inset-x-0.bottom-0 > a::after,
+  nav.fixed.inset-x-0.bottom-0 > button::after {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  nav.fixed.inset-x-0.bottom-0 > :nth-child(1)::after {
+    content: "Início";
+  }
+
+  nav.fixed.inset-x-0.bottom-0 > :nth-child(2)::after {
+    content: "Categorias";
+  }
+
+  nav.fixed.inset-x-0.bottom-0 > :nth-child(3)::after {
+    content: "Pedidos";
+  }
+
+  nav.fixed.inset-x-0.bottom-0 > :nth-child(4)::after {
+    content: "Conta";
+  }
+}
