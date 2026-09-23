@@ -4,6 +4,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -132,16 +133,18 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const isAdmin = pathname.startsWith("/admin");
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Quick shortcut to open the existing admin area without login for now. */}
+      {/* Admin shortcut returns to the public storefront; public pages keep the admin shortcut. */}
       <Link
-        to="/admin"
-        aria-label="Abrir painel administrativo"
+        to={isAdmin ? "/" : "/admin"}
+        aria-label={isAdmin ? "Voltar à página inicial da loja" : "Abrir painel administrativo"}
         className="fixed left-3 top-[76px] z-[60] inline-flex min-h-9 items-center gap-2 rounded-full border border-[#ffc400]/60 bg-[#111314]/95 px-4 text-xs font-extrabold text-[#ffc400] shadow-lg backdrop-blur transition hover:bg-[#ffc400] hover:text-black focus:outline-none focus:ring-2 focus:ring-[#ffc400]"
       >
-        Painel
+        {isAdmin ? "← Voltar à loja" : "Painel"}
       </Link>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
