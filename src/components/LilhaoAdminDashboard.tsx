@@ -50,9 +50,13 @@ export default function LilhaoAdminDashboard() {
         </aside>
 
         <main className="min-w-0 flex-1 pb-20 lg:pb-0">
-          <header className="sticky top-0 z-30 flex min-h-[82px] items-center justify-between border-b border-white/[.08] bg-[#09090b]/95 px-4 backdrop-blur md:px-8">
-            <div className="flex min-w-0 items-center gap-3"><button onClick={() => setMenuOpen(true)} aria-label="Abrir menu" className="rounded-lg p-2 text-zinc-400 hover:bg-white/5 lg:hidden"><Menu size={21}/></button><div className="min-w-0"><p className="truncate text-[11px] text-zinc-500">Lilhão / <span className="text-zinc-300">{active}</span></p><h1 className="text-xl font-extrabold tracking-tight md:text-2xl">{active}<span className="text-[#ffc900]">.</span></h1></div></div>
-            <div className="flex shrink-0 items-center gap-2 md:gap-4"><a href="/" className="hidden rounded-full border border-[#ffc900]/40 px-4 py-2 text-xs font-bold text-[#ffc900] transition hover:bg-[#ffc900]/10 sm:inline-flex">← Voltar à loja</a><span className="hidden items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-[10px] text-zinc-400 xl:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-amber-400"/>Modo de demonstração</span><button aria-label="Notificações" className="relative rounded-xl border border-white/10 p-2.5 text-zinc-400"><Bell size={18}/><span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#ffc900]"/></button><div className="grid h-10 w-10 place-items-center rounded-full bg-[#ffc900] text-sm font-black text-black">L!</div></div>
+          <header className="sticky top-0 z-30 flex min-h-[82px] items-center justify-between border-b border-white/[.08] bg-[#09090b]/95 px-3 backdrop-blur sm:px-4 md:px-8">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              <button onClick={() => setMenuOpen(true)} aria-label="Abrir menu" className="rounded-lg p-2 text-zinc-400 hover:bg-white/5 lg:hidden"><Menu size={21}/></button>
+              <a href="/" aria-label="Voltar à página inicial da loja" title="Voltar à loja" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#ffc900]/40 px-2 py-2 text-[11px] font-bold text-[#ffc900] transition hover:bg-[#ffc900]/10 sm:gap-2 sm:px-3 sm:text-xs"><House size={15}/><span>Início</span></a>
+              <div className="min-w-0"><p className="truncate text-[11px] text-zinc-500">Lilhão / <span className="text-zinc-300">{active}</span></p><h1 className="text-xl font-extrabold tracking-tight md:text-2xl">{active}<span className="text-[#ffc900]">.</span></h1></div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2 md:gap-4"><span className="hidden items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-[10px] text-zinc-400 xl:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-amber-400"/>Modo de demonstração</span><button aria-label="Notificações" className="relative rounded-xl border border-white/10 p-2.5 text-zinc-400"><Bell size={18}/><span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#ffc900]"/></button><div className="grid h-10 w-10 place-items-center rounded-full bg-[#ffc900] text-sm font-black text-black">L!</div></div>
           </header>
 
           <div className="mx-auto max-w-[1500px] p-4 md:p-8">
