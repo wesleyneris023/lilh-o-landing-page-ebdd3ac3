@@ -11,19 +11,20 @@ type ProdutoDb = {
   ativo: boolean;
   destaque: boolean;
   ordem: number;
-  categorias?: { nome: string; slug: string } | null;
+  categorias?: { nome: string; slug?: string } | { nome: string; slug?: string }[] | null;
 };
 
 function mapProduto(row: ProdutoDb): Produto {
+  const cat = Array.isArray(row.categorias) ? row.categorias[0] : row.categorias;
   const fallback = produtosIniciais.find((p) => p.nome === row.nome);
   return {
     id: row.id,
     nome: row.nome,
     descricao: row.descricao,
     preco: Number(row.preco),
-    categoria: row.categorias?.nome || fallback?.categoria || "Outros",
-    imagem: row.imagem_url || fallback?.imagem,
-    selo: row.selo || fallback?.selo,
+    categoria: cat?.nome || fallback?.categoria || "Outros",
+    ...((row.imagem_url || fallback?.imagem) ? { imagem: (row.imagem_url || fallback?.imagem)! } : {}),
+    ...((row.selo || fallback?.selo) ? { selo: (row.selo || fallback?.selo)! } : {}),
   };
 }
 
@@ -34,7 +35,7 @@ export async function carregarCatalogo(): Promise<Produto[]> {
     .eq("ativo", true)
     .order("ordem", { ascending: true });
   if (error) throw error;
-  return (data || []).map(mapProduto);
+  return (data || []).map((r) => mapProduto(r as ProdutoDb));
 }
 
 export async function carregarCategorias(): Promise<string[]> {
@@ -61,7 +62,7 @@ export async function criarPedidoReal(input: {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "",
+      apikey: import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || "",
       ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
     },
     body: JSON.stringify(input),
@@ -115,7 +116,7 @@ export async function atualizarStatusPedido(numero: string, status: string) {
 export async function carregarProdutosAdmin() {
   const { data, error } = await supabase.from("produtos").select("id,nome,descricao,preco,imagem_url,selo,ativo,destaque,ordem,categoria_id,categorias(nome)").order("ordem", { ascending: true });
   if (error) throw error;
-  return (data || []).map(mapProduto);
+  return (data || []).map((r) => mapProduto(r as ProdutoDb));
 }
 
 export async function salvarProdutoDb(produto: Produto) {
