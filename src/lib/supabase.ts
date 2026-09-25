@@ -1,15 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 
-const url = import.meta.env['VITE_SUPABASE_URL'] || "https://vcqiggjfozzbqcrzisqc.supabase.co";
-const key = import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || "sb_publishable_h9nYFmLSEeTpqKa1Cu1crw_6fjD1EeY";
+const SUPABASE_PROJECT_URL = "https://vcqiggjfozzbqcrzisqc.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_h9nYFmLSEeTpqKa1Cu1crw_6fjD1EeY";
 
-if (!key) {
-  console.warn("Lilhão: VITE_SUPABASE_PUBLISHABLE_KEY não configurada. O app usará o fallback local quando disponível.");
-}
+export const SUPABASE_URL = SUPABASE_PROJECT_URL;
+export const ORDER_FUNCTION_URL = `${SUPABASE_PROJECT_URL}/functions/v1/criar-pedido`;
 
-export const supabase = createClient(url, key || "", {
+export const supabase = createClient(SUPABASE_PROJECT_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
 });
-
-export const SUPABASE_URL = url;
-export const ORDER_FUNCTION_URL = `${url}/functions/v1/criar-pedido`;
