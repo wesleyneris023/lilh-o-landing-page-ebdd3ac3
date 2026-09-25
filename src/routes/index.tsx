@@ -5,7 +5,7 @@ import heroBurger from "@/assets/hero-burger.jpg";
 
 import { categorias, dinheiro, lerPedidos, lerProdutos, salvarPedidos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
 import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosAdmin } from "@/lib/api";
-\nconst PIX_CODIGO_DEMO = "00020126580014BR.GOV.BCB.PIX0136lilhao-demo-pagamento-nao-real-5204000053039865406";
+const PIX_CODIGO_DEMO = "00020126580014BR.GOV.BCB.PIX0136lilhao-demo-pagamento-nao-real-5204000053039865406";
 
 function FakeQrCode() {
   const cells = Array.from({ length: 29 * 29 }, (_, index) => {
