@@ -137,6 +137,12 @@ export async function excluirProdutoDb(id: string) {
   if (error) throw error;
 }
 
+export async function carregarFormasPagamento() {
+  const { data, error } = await supabase.from("formas_pagamento").select("nome").eq("ativo", true).order("ordem", { ascending: true });
+  if (error) throw error;
+  return (data || []).map((item) => item.nome);
+}
+
 export async function carregarConfiguracoes() {
   const { data, error } = await supabase.from("configuracoes_loja").select("*").eq("id", true).single();
   if (error) throw error;

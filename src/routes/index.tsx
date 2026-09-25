@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Clock, Copy,
 import heroBurger from "@/assets/hero-burger.jpg";
 
 import { categorias, dinheiro, lerPedidos, lerProdutos, salvarPedidos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
-import { carregarCatalogo, carregarCategorias, criarPedidoReal, carregarPedidosAdmin } from "@/lib/api";
+import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosAdmin } from "@/lib/api";
 \nconst PIX_CODIGO_DEMO = "00020126580014BR.GOV.BCB.PIX0136lilhao-demo-pagamento-nao-real-5204000053039865406";
 
 function FakeQrCode() {
@@ -48,16 +48,22 @@ function Index() {
   const [erroMenu, setErroMenu] = useState("");
   const [enviandoPedido, setEnviandoPedido] = useState(false);
   const [erroCheckout, setErroCheckout] = useState("");
+  const [taxaEntregaConfigurada, setTaxaEntregaConfigurada] = useState(5);
+  const [aceitaPedidos, setAceitaPedidos] = useState(true);
+  const [formasPagamento, setFormasPagamento] = useState<string[]>(["PIX", "Crédito", "Débito", "Dinheiro"]);
 
   useEffect(() => {
     let ativo = true;
     (async () => {
       try {
         setCarregandoMenu(true);
-        const [produtos, cats] = await Promise.all([carregarCatalogo(), carregarCategorias()]);
+        const [produtos, cats, cfg, formas] = await Promise.all([carregarCatalogo(), carregarCategorias(), carregarConfiguracoes(), carregarFormasPagamento()]);
         if (!ativo) return;
         setMenu(produtos);
         setCategoriasMenu(cats);
+        setTaxaEntregaConfigurada(Number(cfg.taxa_entrega || 0));
+        setAceitaPedidos(cfg.aceita_pedidos !== false);
+        if (formas.length) setFormasPagamento(formas);
         setErroMenu("");
       } catch {
         if (!ativo) return;
@@ -74,12 +80,12 @@ function Index() {
   const filtrados = useMemo(() => menu.filter((p) => (categoria === "Todos" || p.categoria === categoria) && `${p.nome} ${p.descricao}`.toLowerCase().includes(busca.toLowerCase())), [categoria, busca, menu]);
   const quantidade = sacola.reduce((t, i) => t + i.quantidade, 0);
   const subtotal = sacola.reduce((t, i) => t + i.preco * i.quantidade, 0);
-  const taxaEntrega = tipoEntrega === "entrega" ? 5 : 0;
+  const taxaEntrega = tipoEntrega === "entrega" ? taxaEntregaConfigurada : 0;
   const total = subtotal + taxaEntrega;
 
   function adicionar(produto: Produto) { setSacola((atual) => { const existe = atual.find((i) => i.id === produto.id); return existe ? atual.map((i) => i.id === produto.id ? { ...i, quantidade: i.quantidade + 1 } : i) : [...atual, { ...produto, quantidade: 1 }]; }); }
   function alterarQuantidade(id: string, delta: number) { setSacola((atual) => atual.map((i) => i.id === id ? { ...i, quantidade: i.quantidade + delta } : i).filter((i) => i.quantidade > 0)); }
-  function abrirCheckout() { if (!sacola.length) return; setSacolaAberta(false); setCheckoutEtapa(1); setAba("inicio"); }
+  function abrirCheckout() { if (!sacola.length || !aceitaPedidos) return; setSacolaAberta(false); setCheckoutEtapa(1); setAba("inicio"); }
   function continuarEntrega() { if (!nome.trim() || !telefone.trim() || (tipoEntrega === "entrega" && (!rua.trim() || !numero.trim() || !bairro.trim()))) return; setCheckoutEtapa(2); }
   function continuarPagamento() { if (!pagamento) return; setCheckoutEtapa(3); }
   async function confirmarPedido(pixConfirmado = pixPago) {
@@ -143,7 +149,7 @@ function Index() {
       </div>
 
       {checkoutEtapa === 1 && <section className="space-y-5 py-5"><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><h2 className="text-lg font-black">Seus dados</h2><div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold text-white/60">Nome completo *<input required value={nome} onChange={e => setNome(e.target.value)} className={inputClass} placeholder="Como podemos te chamar?"/></label><label className="text-xs font-bold text-white/60">Telefone / WhatsApp *<input required value={telefone} onChange={e => setTelefone(e.target.value)} className={inputClass} placeholder="(00) 00000-0000" inputMode="tel"/></label></div></div>
-        <div><h2 className="mb-3 text-lg font-black">Como deseja receber?</h2><div className="grid gap-3 sm:grid-cols-2"><button onClick={() => setTipoEntrega("entrega")} className={`flex min-h-[76px] items-center gap-3 rounded-2xl border p-4 text-left ${tipoEntrega === "entrega" ? "border-[#ffc400] bg-[#ffc400]/10" : "border-white/10 bg-[#141617]"}`}><MapPin className="size-6 text-[#ffc400]"/><span className="flex-1"><b>Receber no endereço</b><small className="mt-1 block text-white/45">Taxa de entrega: {dinheiro(5)}</small></span><span className={`size-5 rounded-full border-2 ${tipoEntrega === "entrega" ? "border-[#ffc400] bg-[#ffc400] shadow-[inset_0_0_0_4px_#111]" : "border-white/25"}`}/></button><button onClick={() => setTipoEntrega("retirada")} className={`flex min-h-[76px] items-center gap-3 rounded-2xl border p-4 text-left ${tipoEntrega === "retirada" ? "border-[#ffc400] bg-[#ffc400]/10" : "border-white/10 bg-[#141617]"}`}><Store className="size-6 text-[#ffc400]"/><span className="flex-1"><b>Retirar no local</b><small className="mt-1 block text-white/45">Sem taxa de entrega</small></span><span className={`size-5 rounded-full border-2 ${tipoEntrega === "retirada" ? "border-[#ffc400] bg-[#ffc400] shadow-[inset_0_0_0_4px_#111]" : "border-white/25"}`}/></button></div></div>
+        <div><h2 className="mb-3 text-lg font-black">Como deseja receber?</h2><div className="grid gap-3 sm:grid-cols-2"><button onClick={() => setTipoEntrega("entrega")} className={`flex min-h-[76px] items-center gap-3 rounded-2xl border p-4 text-left ${tipoEntrega === "entrega" ? "border-[#ffc400] bg-[#ffc400]/10" : "border-white/10 bg-[#141617]"}`}><MapPin className="size-6 text-[#ffc400]"/><span className="flex-1"><b>Receber no endereço</b><small className="mt-1 block text-white/45">Taxa de entrega: {dinheiro(taxaEntregaConfigurada)}</small></span><span className={`size-5 rounded-full border-2 ${tipoEntrega === "entrega" ? "border-[#ffc400] bg-[#ffc400] shadow-[inset_0_0_0_4px_#111]" : "border-white/25"}`}/></button><button onClick={() => setTipoEntrega("retirada")} className={`flex min-h-[76px] items-center gap-3 rounded-2xl border p-4 text-left ${tipoEntrega === "retirada" ? "border-[#ffc400] bg-[#ffc400]/10" : "border-white/10 bg-[#141617]"}`}><Store className="size-6 text-[#ffc400]"/><span className="flex-1"><b>Retirar no local</b><small className="mt-1 block text-white/45">Sem taxa de entrega</small></span><span className={`size-5 rounded-full border-2 ${tipoEntrega === "retirada" ? "border-[#ffc400] bg-[#ffc400] shadow-[inset_0_0_0_4px_#111]" : "border-white/25"}`}/></button></div></div>
         {tipoEntrega === "entrega" && <div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><h2 className="text-lg font-black">Endereço de entrega</h2><div className="mt-3 grid grid-cols-2 gap-3"><label className="col-span-2 text-xs font-bold text-white/60 sm:col-span-1">CEP (opcional)<input value={cep} onChange={e => setCep(e.target.value)} className={inputClass} placeholder="00000-000" inputMode="numeric"/></label><label className="col-span-2 text-xs font-bold text-white/60 sm:col-span-1">Bairro *<input required value={bairro} onChange={e => setBairro(e.target.value)} className={inputClass} placeholder="Seu bairro"/></label><label className="col-span-2 text-xs font-bold text-white/60 sm:col-span-1">Rua / Avenida *<input required value={rua} onChange={e => setRua(e.target.value)} className={inputClass} placeholder="Nome da rua"/></label><label className="text-xs font-bold text-white/60">Número *<input required value={numero} onChange={e => setNumero(e.target.value)} className={inputClass} placeholder="Nº"/></label><label className="text-xs font-bold text-white/60">Complemento<input value={complemento} onChange={e => setComplemento(e.target.value)} className={inputClass} placeholder="Casa, ap..."/></label><label className="col-span-2 text-xs font-bold text-white/60">Ponto de referência<input value={referencia} onChange={e => setReferencia(e.target.value)} className={inputClass} placeholder="Próximo de..."/></label></div><p className="mt-3 text-xs text-[#ffc400]/80">Confira o endereço antes de continuar. A taxa exibida é ilustrativa e precisa ser configurada pela lanchonete.</p></div>}
         <button onClick={continuarEntrega} disabled={!nome.trim() || !telefone.trim() || (tipoEntrega === "entrega" && (!rua.trim() || !numero.trim() || !bairro.trim()))} className={`${actionClass} w-full`}>Continuar <ArrowRight className="ml-1 inline size-4"/></button>
       </section>}
