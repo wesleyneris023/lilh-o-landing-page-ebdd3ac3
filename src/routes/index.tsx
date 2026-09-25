@@ -6,6 +6,17 @@ import heroBurger from "@/assets/hero-burger.jpg";
 import { categorias, dinheiro, lerPedidos, lerProdutos, salvarPedidos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
 import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosAdmin } from "@/lib/api";
 const PIX_CODIGO_DEMO = "00020126580014BR.GOV.BCB.PIX0136lilhao-demo-pagamento-nao-real-5204000053039865406";
+function categoriaIcone(cat: string) {
+  switch (cat) {
+    case "Todos": return LayoutDashboard;
+    case "Hambúrgueres": return Flame;
+    case "Combos": return PackageCheck;
+    case "Pratos": return Utensils;
+    case "Bebidas": return ShoppingBag;
+    case "Sorvetes": return Store;
+    default: return ClipboardList;
+  }
+}
 
 function FakeQrCode() {
   const cells = Array.from({ length: 29 * 29 }, (_, index) => {
