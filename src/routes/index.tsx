@@ -68,14 +68,30 @@ function Index() {
     (async () => {
       try {
         setCarregandoMenu(true);
-        const [produtos, cats, cfg, formas] = await Promise.all([carregarCatalogo(), carregarCategorias(), carregarConfiguracoes(), carregarFormasPagamento()]);
+        const [catalogoResult, categoriasResult, configResult, formasResult] = await Promise.allSettled([
+          carregarCatalogo(),
+          carregarCategorias(),
+          carregarConfiguracoes(),
+          carregarFormasPagamento(),
+        ]);
         if (!ativo) return;
-        setMenu(produtos);
-        setCategoriasMenu(cats);
-        setTaxaEntregaConfigurada(Number(cfg.taxa_entrega || 0));
-        setAceitaPedidos(cfg.aceita_pedidos !== false);
-        if (formas.length) setFormasPagamento(formas);
-        setErroMenu("");
+        const produtos = catalogoResult.status === "fulfilled" ? catalogoResult.value : null;
+        const cats = categoriasResult.status === "fulfilled" ? categoriasResult.value : null;
+        const cfg = configResult.status === "fulfilled" ? configResult.value : null;
+        const formas = formasResult.status === "fulfilled" ? formasResult.value : null;
+        setMenu(produtos ?? lerProdutos());
+        setCategoriasMenu(cats ?? categorias);
+        if (cfg) {
+          setTaxaEntregaConfigurada(Number(cfg.taxa_entrega || 0));
+          setAceitaPedidos(cfg.aceita_pedidos !== false);
+        }
+        if (formas?.length) setFormasPagamento(formas);
+        if (produtos && cats) {
+          setErroMenu("");
+        } else {
+          const failed = [catalogoResult, categoriasResult, configResult, formasResult].filter((r) => r.status === "rejected").length;
+          setErroMenu("Alguns dados online não puderam ser carregados (" + failed + "). O restante do cardápio continua disponível.");
+        }
       } catch {
         if (!ativo) return;
         setErroMenu("Não foi possível carregar o cardápio online. Exibindo o catálogo de demonstração.");
