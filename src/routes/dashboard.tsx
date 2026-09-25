@@ -139,7 +139,76 @@ function Dashboard() {
       </main>
     </div>
     <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 border-t border-white/10 bg-[#101112]/95 p-2 backdrop-blur-xl md:hidden">{menu.map(([id,label,Icon])=><button key={id} onClick={()=>setAba(id)} className={`flex flex-col items-center gap-1 py-1 text-[9px] font-bold ${aba===id?"text-[#ffc400]":"text-white/45"}`}><Icon className="size-5"/>{label}</button>)}</nav>
-    {produtoEditando&&<div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 sm:items-center sm:p-4" onClick={()=>setProdutoEditando(null)}><section onClick={e=>e.stopPropagation()} className="w-full max-w-lg rounded-t-3xl border border-white/10 bg-[#141617] p-5 sm:rounded-3xl"><div className="flex items-center justify-between"><h2 className="text-xl font-black">{produtos.some(p=>p.id===produtoEditando.id)?"Editar produto":"Novo produto"}</h2><button onClick={()=>setProdutoEditando(null)}><X/></button></div><div className="mt-5 space-y-3"><label className="block text-xs font-bold text-white/50">Nome<input value={produtoEditando.nome} onChange={e=>setProdutoEditando({...produtoEditando,nome:e.target.value})} className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none"/></label><label className="block text-xs font-bold text-white/50">Descrição<textarea value={produtoEditando.descricao} onChange={e=>setProdutoEditando({...produtoEditando,descricao:e.target.value})} className="mt-1 min-h-24 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none"/></label><div className="grid grid-cols-2 gap-3"><label className="block text-xs font-bold text-white/50">Preço<input type="number" step="0.01" value={produtoEditando.preco} onChange={e=>setProdutoEditando({...produtoEditando,preco:Number(e.target.value)})} className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none"/></label><label className="block text-xs font-bold text-white/50">Categoria<select value={produtoEditando.categoria} onChange={e=>setProdutoEditando({...produtoEditando,categoria:e.target.value})} className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none">{categorias.filter(c=>c!=="Todos").map(c=><option key={c}>{c}</option>)}</select></label></div><div className="grid grid-cols-2 gap-3 pt-2"><button onClick={()=>setProdutoEditando(null)} className="rounded-xl border border-white/10 py-3 font-bold">Cancelar</button><button onClick={()=>salvarProduto(produtoEditando)} disabled={!produtoEditando.nome.trim()||produtoEditando.preco<=0} className="rounded-xl bg-[#ffc400] py-3 font-black text-black disabled:opacity-40">Salvar produto</button></div></section></div></d}</div>}{pedidoSelecionado&&<div className="fixed inset-0 z-[65] flex items-end justify-center bg-black/75" onClick={()=>setPedidoSelecionado(null)}><section onClick={e=>e.stopPropagation()} className="max-h-[85dvh] w-full max-w-xl overflow-y-auto rounded-t-3xl border border-white/10 bg-[#141617] p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-white/40">Detalhes do pedido</p><h2 className="text-2xl font-black">#{pedidoSelecionado.numero}</h2></div><button onClick={()=>setPedidoSelecionado(null)}><X/></button></div><div className="mt-5 space-y-2 text-sm"><p><b>Cliente:</b> {pedidoSelecionado.nome}</p><p><b>Telefone:</b> {pedidoSelecionado.telefone}</p><p><b>Entrega:</b> {pedidoSelecionado.entrega}</p><p><b>Endereço:</b> {pedidoSelecionado.endereco}</p><p><b>Pagamento:</b> {pedidoSelecionado.pagamento}</p><p><b>Observação:</b> {pedidoSelecionado.observacao || "—"}</p></div><div className="my-5 space-y-3 border-y border-white/10 py-4">{pedidoSelecionado.itens.map(i=><div key={i.id} className="flex justify-between"><span>{i.quantidade}x {i.nome}</span><b>{dinheiro(i.preco*i.quantidade)}</b></div>)}</div><div className="flex justify-between text-lg font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(pedidoSelecionado.total)}</span></div></section></div>}
+    {produtoEditando && (
+      <div
+        className="fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 sm:items-center sm:p-4"
+        onClick={() => setProdutoEditando(null)}
+      >
+        <section
+          onClick={(e) => e.stopPropagation()}
+          className="w-full max-w-lg rounded-t-3xl border border-white/10 bg-[#141617] p-5 sm:rounded-3xl"
+        >
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-black">
+              {produtos.some((p) => p.id === produtoEditando.id) ? "Editar produto" : "Novo produto"}
+            </h2>
+            <button onClick={() => setProdutoEditando(null)}><X /></button>
+          </div>
+          <div className="mt-5 space-y-3">
+            <label className="block text-xs font-bold text-white/50">
+              Nome
+              <input
+                value={produtoEditando.nome}
+                onChange={(e) => setProdutoEditando({ ...produtoEditando, nome: e.target.value })}
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none"
+              />
+            </label>
+            <label className="block text-xs font-bold text-white/50">
+              Descrição
+              <textarea
+                value={produtoEditando.descricao}
+                onChange={(e) => setProdutoEditando({ ...produtoEditando, descricao: e.target.value })}
+                className="mt-1 min-h-24 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none"
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-xs font-bold text-white/50">
+                Preço
+                <input
+                  type="number"
+                  step="0.01"
+                  value={produtoEditando.preco}
+                  onChange={(e) => setProdutoEditando({ ...produtoEditando, preco: Number(e.target.value) })}
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none"
+                />
+              </label>
+              <label className="block text-xs font-bold text-white/50">
+                Categoria
+                <select
+                  value={produtoEditando.categoria}
+                  onChange={(e) => setProdutoEditando({ ...produtoEditando, categoria: e.target.value })}
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none"
+                >
+                  {categorias.filter((c) => c !== "Todos").map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button onClick={() => setProdutoEditando(null)} className="rounded-xl border border-white/10 py-3 font-bold">
+                Cancelar
+              </button>
+              <button
+                onClick={() => salvarProduto(produtoEditando)}
+                disabled={!produtoEditando.nome.trim() || produtoEditando.preco <= 0}
+                className="rounded-xl bg-[#ffc400] py-3 font-black text-black disabled:opacity-40"
+              >
+                Salvar produto
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    )}{pedidoSelecionado&&<div className="fixed inset-0 z-[65] flex items-end justify-center bg-black/75" onClick={()=>setPedidoSelecionado(null)}><section onClick={e=>e.stopPropagation()} className="max-h-[85dvh] w-full max-w-xl overflow-y-auto rounded-t-3xl border border-white/10 bg-[#141617] p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-white/40">Detalhes do pedido</p><h2 className="text-2xl font-black">#{pedidoSelecionado.numero}</h2></div><button onClick={()=>setPedidoSelecionado(null)}><X/></button></div><div className="mt-5 space-y-2 text-sm"><p><b>Cliente:</b> {pedidoSelecionado.nome}</p><p><b>Telefone:</b> {pedidoSelecionado.telefone}</p><p><b>Entrega:</b> {pedidoSelecionado.entrega}</p><p><b>Endereço:</b> {pedidoSelecionado.endereco}</p><p><b>Pagamento:</b> {pedidoSelecionado.pagamento}</p><p><b>Observação:</b> {pedidoSelecionado.observacao || "—"}</p></div><div className="my-5 space-y-3 border-y border-white/10 py-4">{pedidoSelecionado.itens.map(i=><div key={i.id} className="flex justify-between"><span>{i.quantidade}x {i.nome}</span><b>{dinheiro(i.preco*i.quantidade)}</b></div>)}</div><div className="flex justify-between text-lg font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(pedidoSelecionado.total)}</span></div></section></div>}
   </div>;
 }
 
