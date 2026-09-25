@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Clock, Copy,
 import heroBurger from "@/assets/hero-burger.jpg";
 
 import { categorias, dinheiro, lerPedidos, lerProdutos, salvarPedidos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
+import { carregarCatalogo, carregarCategorias, criarPedidoReal, carregarPedidosAdmin } from "@/lib/api";
 \nconst PIX_CODIGO_DEMO = "00020126580014BR.GOV.BCB.PIX0136lilhao-demo-pagamento-nao-real-5204000053039865406";
 
 function FakeQrCode() {
@@ -41,12 +42,33 @@ function Index() {
   const [pedidoAtual, setPedidoAtual] = useState<Pedido | null>(null);
   const [aba, setAba] = useState<"inicio" | "pedidos" | "conta">("inicio");
   const [menu, setMenu] = useState<Produto[]>(lerProdutos());
+  const [categoriasMenu, setCategoriasMenu] = useState<string[]>(categorias);
   const [pixPago, setPixPago] = useState(false);
+  const [carregandoMenu, setCarregandoMenu] = useState(true);
+  const [erroMenu, setErroMenu] = useState("");
+  const [enviandoPedido, setEnviandoPedido] = useState(false);
+  const [erroCheckout, setErroCheckout] = useState("");
 
   useEffect(() => {
-    const sincronizarMenu = () => setMenu(lerProdutos());
-    window.addEventListener("storage", sincronizarMenu);
-    return () => window.removeEventListener("storage", sincronizarMenu);
+    let ativo = true;
+    (async () => {
+      try {
+        setCarregandoMenu(true);
+        const [produtos, cats] = await Promise.all([carregarCatalogo(), carregarCategorias()]);
+        if (!ativo) return;
+        setMenu(produtos);
+        setCategoriasMenu(cats);
+        setErroMenu("");
+      } catch {
+        if (!ativo) return;
+        setErroMenu("Não foi possível carregar o cardápio online. Exibindo o catálogo de demonstração.");
+        setMenu(lerProdutos());
+        setCategoriasMenu(categorias);
+      } finally {
+        if (ativo) setCarregandoMenu(false);
+      }
+    })();
+    return () => { ativo = false; };
   }, []);
 
   const filtrados = useMemo(() => menu.filter((p) => (categoria === "Todos" || p.categoria === categoria) && `${p.nome} ${p.descricao}`.toLowerCase().includes(busca.toLowerCase())), [categoria, busca, menu]);
@@ -60,20 +82,59 @@ function Index() {
   function abrirCheckout() { if (!sacola.length) return; setSacolaAberta(false); setCheckoutEtapa(1); setAba("inicio"); }
   function continuarEntrega() { if (!nome.trim() || !telefone.trim() || (tipoEntrega === "entrega" && (!rua.trim() || !numero.trim() || !bairro.trim()))) return; setCheckoutEtapa(2); }
   function continuarPagamento() { if (!pagamento) return; setCheckoutEtapa(3); }
-  function confirmarPedido(pixConfirmado = pixPago) {
+  async function confirmarPedido(pixConfirmado = pixPago) {
     if (pagamento === "PIX" && !pixConfirmado) return;
-    const novo: Pedido = { numero: String(Date.now()).slice(-6), criadoEm: new Date().toISOString(), itens: sacola, nome, telefone, entrega: tipoEntrega === "retirada" ? "Retirada no local" : "Entrega", endereco: tipoEntrega === "retirada" ? "Retirada no local" : `${rua}, ${numero} — ${bairro}${complemento ? `, ${complemento}` : ""}${referencia ? ` (Ref.: ${referencia})` : ""}`, pagamento: pagamento + (pagamento === "Dinheiro" && troco ? ` (troco para ${troco})` : ""), observacao, subtotal, taxa: taxaEntrega, total, status: pagamento === "PIX" ? "Pago" : "Recebido" };
-    const atualizados = [novo, ...lerPedidos()];
-    salvarPedidos(atualizados);
-    setPedidos(atualizados); setPedidoAtual(novo); setSacola([]); setPixPago(false); setCheckoutEtapa(5);
+    if (!sacola.length || enviandoPedido) return;
+    setErroCheckout("");
+    setEnviandoPedido(true);
+    const enderecoTexto = tipoEntrega === "retirada"
+      ? "Retirada no local"
+      : rua + ", " + numero + " — " + bairro + (complemento ? ", " + complemento : "") + (referencia ? " (Ref.: " + referencia + ")" : "");
+    try {
+      const criado = await criarPedidoReal({
+        nome,
+        telefone,
+        tipo_entrega: tipoEntrega,
+        endereco: { cep, rua, numero, bairro, complemento, referencia, texto: enderecoTexto },
+        pagamento,
+        observacao,
+        itens: sacola.map((item) => ({ id: item.id, quantidade: item.quantidade })),
+      });
+      const novo: Pedido = {
+        numero: criado.numero,
+        criadoEm: new Date().toISOString(),
+        itens: sacola,
+        nome,
+        telefone,
+        entrega: tipoEntrega === "retirada" ? "Retirada no local" : "Entrega",
+        endereco: enderecoTexto,
+        pagamento: pagamento + (pagamento === "Dinheiro" && troco ? " (troco para " + troco + ")" : ""),
+        observacao,
+        subtotal: Number(criado.subtotal),
+        taxa: Number(criado.taxa_entrega),
+        total: Number(criado.total),
+        status: "Recebido",
+      };
+      setPedidos((atual) => [novo, ...atual]);
+      setPedidoAtual(novo);
+      setSacola([]);
+      setPixPago(false);
+      setCheckoutEtapa(5);
+    } catch (error) {
+      setErroCheckout(error instanceof Error ? error.message : "Não foi possível enviar o pedido. Tente novamente.");
+    } finally {
+      setEnviandoPedido(false);
+    }
   }
-  function abrirMeusPedidos() { setPedidos(lerPedidos()); setAba("pedidos"); setCheckoutEtapa(0); setSacolaAberta(false); setPixPago(false); }
+  async function abrirMeusPedidos() { try { setPedidos(await carregarPedidosAdmin()); } catch { setPedidos(lerPedidos()); } setAba("pedidos"); setCheckoutEtapa(0); setSacolaAberta(false); setPixPago(false); }
 
   const inputClass = "mt-1.5 min-h-12 w-full rounded-xl border border-white/10 bg-[#101112] px-4 text-base text-white outline-none placeholder:text-white/30 focus:border-[#ffc400]";
   const actionClass = "min-h-12 rounded-xl bg-[#ffc400] px-5 font-black text-black transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-40";
   const quietClass = "min-h-12 rounded-xl border border-white/10 bg-white/[.04] px-5 font-bold text-white/75";
 
   return <div className="min-h-screen bg-[#080909] pb-24 text-white md:pb-0">
+    {erroMenu && checkoutEtapa === 0 && <div className="mx-auto max-w-7xl px-4 pt-3 sm:px-6"><div className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-xs text-amber-200">{erroMenu}</div></div>}
+    {erroCheckout && checkoutEtapa > 0 && <div className="mx-auto max-w-3xl px-3 pt-3 sm:px-6"><div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{erroCheckout}</div></div>}
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#101010]/95 backdrop-blur-xl"><div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6"><div className="flex items-center gap-2"><button type="button" onClick={() => window.location.assign("/dashboard")} aria-label="Abrir painel administrativo" className="grid size-9 shrink-0 place-items-center rounded-full border border-[#ffc400]/40 bg-[#17150d] text-[#ffc400]"><LayoutDashboard className="size-4"/></button><button onClick={() => { setAba("inicio"); setCheckoutEtapa(0); }} className="flex items-center gap-2.5 text-white"><span className="grid size-10 place-items-center rounded-full border-2 border-[#ffc400] bg-[#17150d] text-lg font-black text-[#ffc400]">L!</span><span><span className="block text-2xl font-black leading-none">Lilhão<span className="text-[#ffc400]">.</span></span><span className="mt-1 hidden text-[9px] font-bold uppercase tracking-[.16em] text-white/65 sm:block">Sabor que todo mundo aprova</span></span></button></div><button type="button" onClick={() => setSacolaAberta(true)} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-[#ffc400] px-3.5 text-sm font-black text-black"><ShoppingBag className="size-5"/><span className="grid min-h-6 min-w-6 place-items-center rounded-full bg-black px-1 text-xs font-black text-[#ffc400]">{quantidade}</span></button></div></header>
 
     {checkoutEtapa > 0 ? <main className="mx-auto min-h-[calc(100dvh-70px)] max-w-3xl px-3 pb-6 sm:px-6">

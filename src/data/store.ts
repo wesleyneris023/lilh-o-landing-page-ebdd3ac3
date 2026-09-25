@@ -42,12 +42,12 @@ export function lerProdutos(): Produto[] {
   try { const raw = localStorage.getItem("lilhao-produtos"); return raw ? JSON.parse(raw) : produtosIniciais; } catch { return produtosIniciais; }
 }
 export function salvarProdutos(produtos: Produto[]) {
-  try { localStorage.setItem("lilhao-produtos", JSON.stringify(produtos)); } catch { /* storage indisponível */ }
+  try { localStorage.setItem("lilhao-produtos", JSON.stringify(produtos)); } catch {}
 }
 export function lerPedidos(): Pedido[] {
   if (typeof window === "undefined") return [];
   try { return JSON.parse(localStorage.getItem("lilhao-pedidos") || "[]"); } catch { return []; }
 }
 export function salvarPedidos(pedidos: Pedido[]) {
-  try { localStorage.setItem("lilhao-pedidos", JSON.stringify(pedidos)); } catch { /* storage indisponível */ }
+  try { localStorage.setItem("lilhao-pedidos", JSON.stringify(pedidos)); } catch {}
 }

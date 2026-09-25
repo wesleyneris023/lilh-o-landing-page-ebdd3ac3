@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
-  Link,
   createRootRouteWithContext,
   useRouter,
   useRouterState,
@@ -119,7 +118,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="pt-BR">
       <head>
         <HeadContent />
       </head>
@@ -133,26 +132,8 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const isAdmin = pathname.startsWith("/admin");
-
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Dashboard shortcut is aligned over the existing L! badge in the sticky header—no extra floating button. */}
-      {!isAdmin && (
-        <>
-          <style>{`header > div > div > button:first-child { display: none !important; }`}</style>
-          <Link
-            to="/admin"
-            aria-label="Abrir Dashboard administrativo"
-            title="Dashboard administrativo"
-            className="fixed left-[max(1rem,calc((100vw-80rem)/2+1rem))] top-3 z-[60] grid size-10 place-items-center rounded-full border-2 border-[#ffc400] bg-[#17150d] text-lg font-black text-[#ffc400] shadow-sm transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[#ffc400]"
-          >
-            L!
-          </Link>
-        </>
-      )}
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
     </QueryClientProvider>
   );
