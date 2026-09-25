@@ -111,7 +111,7 @@ function ContaPage() {
     </section>
     <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-white/10 bg-[#101112] px-2 py-2 text-white sm:hidden">
       <Link to="/" className="flex flex-col items-center gap-1 py-1 text-xs text-white/65"><span>⌂</span>Início</Link>
-      <Link to="/#cardapio" className="flex flex-col items-center gap-1 py-1 text-xs text-white/65"><span>▦</span>Cardápio</Link>
+      <Link to="/" hash="cardapio" className="flex flex-col items-center gap-1 py-1 text-xs text-white/65"><span>▦</span>Cardápio</Link>
       <Link to="/" className="flex flex-col items-center gap-1 py-1 text-xs text-white/65"><ShoppingBag className="size-5"/>Pedidos</Link>
       <span className="flex flex-col items-center gap-1 py-1 text-xs text-[#ffc400]"><UserRound className="size-5"/>Conta</span>
     </nav>
