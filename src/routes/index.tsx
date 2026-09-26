@@ -66,7 +66,7 @@ function Index() {
   const [aceitaPedidos, setAceitaPedidos] = useState(false);
   const [configCarregada, setConfigCarregada] = useState(false);
   const [agoraTick, setAgoraTick] = useState(() => Date.now());
-  const [formasPagamento, setFormasPagamento] = useState<string[]>(["PIX", "Crédito", "Débito", "Dinheiro"]);
+  const [formasPagamento, setFormasPagamento] = useState<string[]>([]);
 
   useEffect(() => {
     let ativo = true;
