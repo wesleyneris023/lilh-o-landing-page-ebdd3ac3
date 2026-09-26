@@ -50,6 +50,7 @@ function Dashboard() {
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [novoPedidoAviso, setNovoPedidoAviso] = useState("");
+  const [agora, setAgora] = useState(new Date());
 
   const menu = [
     ["visao","Visão geral",LayoutDashboard],
@@ -87,6 +88,11 @@ function Dashboard() {
   }, []);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setAgora(new Date()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     if (!autorizado) return;
     const channel = supabase.channel("lilhao-pedidos-dashboard")
       .on("postgres_changes", { event: "*", schema: "public", table: "pedidos" }, (payload) => {
@@ -114,6 +120,24 @@ function Dashboard() {
   }, [pedidos]);
   const vendasHoje = pedidosHoje.reduce((s,p)=>s+p.total,0);
   const itensVendidos = pedidosHoje.reduce((s,p)=>s+p.itens.reduce((a,i)=>a+i.quantidade,0),0);
+  const lojaAberta = useMemo(() => {
+    if (!config?.aceita_pedidos) return false;
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(agora);
+    const hora = Number(parts.find((p) => p.type === "hour")?.value || 0);
+    const minuto = Number(parts.find((p) => p.type === "minute")?.value || 0);
+    const atual = hora * 60 + minuto;
+    const [oh, om] = String(config.horario_abertura || "18:00").split(":").map(Number);
+    const [ch, cm] = String(config.horario_fechamento || "23:30").split(":").map(Number);
+    const abertura = (oh || 0) * 60 + (om || 0);
+    const fechamento = (ch || 0) * 60 + (cm || 0);
+    if (abertura === fechamento) return true;
+    return abertura < fechamento ? atual >= abertura && atual < fechamento : atual >= abertura || atual < fechamento;
+  }, [config, agora]);
   const filtrados = useMemo(() => produtos.filter(p => (p.nome+" "+p.descricao+" "+p.categoria).toLowerCase().includes(busca.toLowerCase())), [produtos,busca]);
 
   if (!autenticado) return <Login onLogged={() => { setAutenticado(true); carregar(); }} />;
@@ -133,8 +157,42 @@ function Dashboard() {
     catch(e) { setErro(e instanceof Error?e.message:"Não foi possível remover o produto."); }
   }
   async function salvarCfg() {
-    try { await salvarConfiguracoes({ nome:config.nome, slogan:config.slogan, whatsapp:config.whatsapp, taxa_entrega:Number(config.taxa_entrega), pedido_minimo:Number(config.pedido_minimo), horario_abertura:config.horario_abertura, horario_fechamento:config.horario_fechamento, endereco_loja:config.endereco_loja, aceita_pedidos:config.aceita_pedidos }); setMensagem("Configurações salvas no Supabase."); }
-    catch(e) { setErro(e instanceof Error?e.message:"Não foi possível salvar."); }
+    try {
+      const payload = {
+        nome: String(config.nome || "").trim(),
+        slogan: String(config.slogan || "").trim(),
+        whatsapp: String(config.whatsapp || "").trim(),
+        taxa_entrega: Number(config.taxa_entrega) || 0,
+        pedido_minimo: Number(config.pedido_minimo) || 0,
+        horario_abertura: String(config.horario_abertura || "18:00"),
+        horario_fechamento: String(config.horario_fechamento || "23:30"),
+        endereco_loja: String(config.endereco_loja || "").trim(),
+        aceita_pedidos: !!config.aceita_pedidos,
+      };
+      await salvarConfiguracoes(payload);
+      setConfig({ ...config, ...payload });
+      setMensagem("Configurações salvas no Supabase.");
+    } catch(e) { setErro(e instanceof Error?e.message:"Não foi possível salvar."); }
+  }
+
+  async function alternarAceitaPedidos() {
+    const novoStatus = !config.aceita_pedidos;
+    try {
+      const payload = {
+        nome: String(config.nome || "").trim(),
+        slogan: String(config.slogan || "").trim(),
+        whatsapp: String(config.whatsapp || "").trim(),
+        taxa_entrega: Number(config.taxa_entrega) || 0,
+        pedido_minimo: Number(config.pedido_minimo) || 0,
+        horario_abertura: String(config.horario_abertura || "18:00"),
+        horario_fechamento: String(config.horario_fechamento || "23:30"),
+        endereco_loja: String(config.endereco_loja || "").trim(),
+        aceita_pedidos: novoStatus,
+      };
+      await salvarConfiguracoes(payload);
+      setConfig({ ...config, ...payload });
+      setMensagem(novoStatus ? "Pedidos liberados." : "Pedidos pausados.");
+    } catch(e) { setErro(e instanceof Error?e.message:"Não foi possível alterar o status da loja."); }
   }
 
   return <div className="min-h-screen bg-[#080909] text-white">
@@ -150,7 +208,59 @@ function Dashboard() {
         {aba==="pedidos"&&<section className="space-y-4"><div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#141617] px-4"><Search className="size-4 text-white/30"/><input value={busca} onChange={e=>setBusca(e.target.value)} className="min-h-11 flex-1 bg-transparent text-sm outline-none" placeholder="Buscar pedido ou cliente..."/></div><div className="overflow-hidden rounded-2xl border border-white/10 bg-[#141617]">{pedidos.filter(p=>(p.numero+" "+p.nome+" "+p.telefone).toLowerCase().includes(busca.toLowerCase())).map(p=><div key={p.numero} className="grid gap-3 border-b border-white/10 p-5 last:border-0 md:grid-cols-[1fr_1.4fr_.7fr_.8fr] md:items-center"><div><p className="text-xs text-white/35">Pedido</p><b>#{p.numero}</b><p className="text-xs text-white/35">{new Date(p.criadoEm).toLocaleString("pt-BR")}</p></div><div><b>{p.nome}</b><p className="text-xs text-white/40">{p.telefone} • {p.entrega}</p></div><b className="text-[#ffc400]">{dinheiro(p.total)}</b><select value={p.status} onChange={e=>status(p.numero,e.target.value)} className="min-h-10 rounded-lg border border-white/10 bg-[#0d0e0f] px-2 text-xs font-bold">{statusOptions.filter((x) => x !== "Saiu para entrega" || p.entrega === "Entrega").map(x=><option key={x}>{x}</option>)}</select><button onClick={()=>setPedidoSelecionado(p)} className="text-left text-xs font-bold text-[#ffc400] md:col-span-4">Ver detalhes →</button></div>)}{!pedidos.length&&<div className="py-16 text-center text-white/30">Nenhum pedido registrado.</div>}</div></section>}
         {aba==="cardapio"&&<section className="space-y-4"><div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#141617] px-4"><Search className="size-4 text-white/30"/><input value={busca} onChange={e=>setBusca(e.target.value)} className="min-h-11 flex-1 bg-transparent text-sm outline-none" placeholder="Buscar produto..."/></div><div className="grid gap-3 lg:grid-cols-2">{filtrados.map(p=><article key={p.id} className="flex items-center gap-4 rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="size-20 shrink-0 overflow-hidden rounded-xl bg-black">{p.imagem?<img src={p.imagem} alt="" className="h-full w-full object-cover"/>:<div className="grid h-full place-items-center text-2xl">🍔</div>}</div><div className="min-w-0 flex-1"><p className="text-xs text-[#ffc400]">{p.categoria}</p><h3 className="font-black">{p.nome}</h3><p className="mt-1 line-clamp-1 text-xs text-white/40">{p.descricao}</p><b className="mt-2 block text-[#ffc400]">{dinheiro(p.preco)}</b></div><button onClick={()=>setProdutoEditando(p)} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-bold">Editar</button><button onClick={()=>excluir(p.id)} className="grid size-9 place-items-center rounded-lg border border-red-400/15 text-red-300"><X className="size-4"/></button></article>)}</div></section>}
         {aba==="categorias"&&<section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{categorias.filter(c=>c!=="Todos").map(cat=><article key={cat} className="rounded-2xl border border-white/10 bg-[#141617] p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-white/35">Categoria</p><h2 className="mt-1 font-black">{cat}</h2></div><span className="grid size-10 place-items-center rounded-xl bg-[#ffc400]/10 text-[#ffc400]"><Utensils className="size-5"/></span></div><p className="mt-4 text-sm text-white/45">{produtos.filter(p=>p.categoria===cat).length} produtos ativos</p></article>)}</section>}
-        {aba==="configuracoes"&&<section className="grid gap-5 lg:grid-cols-2"><article className="rounded-2xl border border-white/10 bg-[#141617] p-5"><h2 className="font-black">Dados da lanchonete</h2><div className="mt-4 space-y-3">{[["Nome","nome"],["Slogan","slogan"],["WhatsApp","whatsapp"],["Taxa de entrega","taxa_entrega"],["Pedido mínimo","pedido_minimo"],["Horário de abertura","horario_abertura"],["Horário de fechamento","horario_fechamento"],["Endereço","endereco_loja"]].map(([label,key])=><label key={key} className="block text-xs font-bold text-white/50">{label}<input value={config[key as string] ?? ""} onChange={e=>setConfig({...config,[key as string]:e.target.value})} className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none focus:border-[#ffc400]"/></label>)}<label className="flex items-center gap-3 rounded-xl border border-white/10 p-3 text-sm font-bold"><input type="checkbox" checked={!!config.aceita_pedidos} onChange={e=>setConfig({...config,aceita_pedidos:e.target.checked})}/> Aceitar novos pedidos</label><button onClick={salvarCfg} className="rounded-xl bg-[#ffc400] px-4 py-3 font-black text-black">Salvar configurações</button></div></article><article className="rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-5"><h2 className="font-black">Status da operação</h2><ul className="mt-4 space-y-3 text-sm text-white/55"><li>✓ Supabase conectado</li><li>✓ Autenticação administrativa</li><li>✓ RLS ativo</li><li>✓ Pedidos persistidos no banco</li><li>✓ Atualização em tempo real</li><li>✓ PIX desativado até integração com provedor real</li></ul></article></section>}
+        {aba==="configuracoes"&&<section className="space-y-5">
+          <article className={`rounded-2xl border p-5 ${lojaAberta ? "border-emerald-400/20 bg-emerald-400/5" : "border-red-400/20 bg-red-400/5"}`}>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[.2em] text-white/35">Operação da loja</p>
+                <div className="mt-1 flex items-center gap-3">
+                  <span className={`size-3 rounded-full ${lojaAberta ? "bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,.7)]" : "bg-red-400"}`}/>
+                  <h2 className="text-2xl font-black">{lojaAberta ? "Loja aberta" : "Loja fechada"}</h2>
+                </div>
+                <p className="mt-2 text-sm text-white/45">Horário: {config.horario_abertura || "18:00"} às {config.horario_fechamento || "23:30"} • {config.aceita_pedidos ? "Pedidos habilitados" : "Pedidos pausados"}</p>
+              </div>
+              <button onClick={alternarAceitaPedidos} className={`rounded-xl px-5 py-3 font-black ${config.aceita_pedidos ? "border border-red-400/20 bg-red-400/10 text-red-200" : "bg-[#ffc400] text-black"}`}>
+                {config.aceita_pedidos ? "Pausar pedidos" : "Liberar pedidos"}
+              </button>
+            </div>
+          </article>
+
+          <div className="grid gap-5 lg:grid-cols-[1.25fr_.75fr]">
+            <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
+              <div className="flex items-center justify-between">
+                <div><h2 className="font-black">Dados da lanchonete</h2><p className="mt-1 text-xs text-white/35">Esses dados alimentam a loja pública e as regras do checkout.</p></div>
+                <Settings className="size-5 text-[#ffc400]"/>
+              </div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <label className="block text-xs font-bold text-white/50 sm:col-span-2">Nome<input value={config.nome ?? ""} onChange={e=>setConfig({...config,nome:e.target.value})} className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none focus:border-[#ffc400]"/></label>
+                <label className="block text-xs font-bold text-white/50 sm:col-span-2">Slogan<input value={config.slogan ?? ""} onChange={e=>setConfig({...config,slogan:e.target.value})} className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none focus:border-[#ffc400]"/></label>
+                <label className="block text-xs font-bold text-white/50">WhatsApp<input value={config.whatsapp ?? ""} onChange={e=>setConfig({...config,whatsapp:e.target.value})} inputMode="tel" placeholder="(XX) XXXXX-XXXX" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none focus:border-[#ffc400]"/></label>
+                <label className="block text-xs font-bold text-white/50">Endereço<input value={config.endereco_loja ?? ""} onChange={e=>setConfig({...config,endereco_loja:e.target.value})} placeholder="Endereço da lanchonete" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none focus:border-[#ffc400]"/></label>
+                <label className="block text-xs font-bold text-white/50">Taxa de entrega (R$)<input type="number" min="0" step="0.01" value={config.taxa_entrega ?? 0} onChange={e=>setConfig({...config,taxa_entrega:e.target.value})} className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none focus:border-[#ffc400]"/></label>
+                <label className="block text-xs font-bold text-white/50">Pedido mínimo (R$)<input type="number" min="0" step="0.01" value={config.pedido_minimo ?? 0} onChange={e=>setConfig({...config,pedido_minimo:e.target.value})} className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none focus:border-[#ffc400]"/></label>
+                <label className="block text-xs font-bold text-white/50">Abertura<input type="time" value={config.horario_abertura ?? "18:00"} onChange={e=>setConfig({...config,horario_abertura:e.target.value})} className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none focus:border-[#ffc400]"/></label>
+                <label className="block text-xs font-bold text-white/50">Fechamento<input type="time" value={config.horario_fechamento ?? "23:30"} onChange={e=>setConfig({...config,horario_fechamento:e.target.value})} className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none focus:border-[#ffc400]"/></label>
+              </div>
+              <button onClick={salvarCfg} className="mt-5 w-full rounded-xl bg-[#ffc400] px-4 py-3 font-black text-black sm:w-auto">Salvar configurações</button>
+            </article>
+
+            <aside className="space-y-5">
+              <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
+                <h2 className="font-black">Regras atuais</h2>
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between rounded-xl bg-black/20 p-3"><span className="text-sm text-white/45">Horário</span><b>{config.horario_abertura || "18:00"}–{config.horario_fechamento || "23:30"}</b></div>
+                  <div className="flex items-center justify-between rounded-xl bg-black/20 p-3"><span className="text-sm text-white/45">Entrega</span><b>{dinheiro(Number(config.taxa_entrega) || 0)}</b></div>
+                  <div className="flex items-center justify-between rounded-xl bg-black/20 p-3"><span className="text-sm text-white/45">Pedido mínimo</span><b>{Number(config.pedido_minimo) > 0 ? dinheiro(Number(config.pedido_minimo)) : "Sem mínimo"}</b></div>
+                  <div className="flex items-center justify-between rounded-xl bg-black/20 p-3"><span className="text-sm text-white/45">Pedidos</span><b className={config.aceita_pedidos ? "text-emerald-300" : "text-red-300"}>{config.aceita_pedidos ? "Habilitados" : "Pausados"}</b></div>
+                </div>
+              </article>
+              <article className="rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-5">
+                <h2 className="font-black">Segurança e operação</h2>
+                <ul className="mt-4 space-y-3 text-sm text-white/55"><li>✓ Supabase conectado</li><li>✓ Autenticação administrativa</li><li>✓ RLS ativo</li><li>✓ Pedidos persistidos no banco</li><li>✓ Atualização em tempo real</li><li>✓ PIX desativado até integração com provedor real</li></ul>
+              </article>
+            </aside>
+          </div>
+        </section>}
       </main>
     </div>
     <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 border-t border-white/10 bg-[#101112]/95 p-2 backdrop-blur-xl md:hidden">{menu.map(([id,label,Icon])=><button key={id} onClick={()=>setAba(id)} className={`flex flex-col items-center gap-1 py-1 text-[9px] font-bold ${aba===id?"text-[#ffc400]":"text-white/45"}`}><Icon className="size-5"/>{label}</button>)}</nav>
