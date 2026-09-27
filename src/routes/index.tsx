@@ -4,7 +4,8 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Clock, Copy,
 import heroBurger from "@/assets/hero-burger.jpg";
 
 import { categorias, dinheiro, lerProdutos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
-import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente } from "@/lib/api";
+import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente, carregarClienteAtual, enviarCodigoTelefone, confirmarCodigoTelefone, sincronizarClienteAtual, sairCliente } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 const PIX_CODIGO_DEMO = "00020126580014BR.GOV.BCB.PIX0136lilhao-demo-pagamento-nao-real-5204000053039865406";
 function categoriaIcone(cat: string) {
   switch (cat) {
@@ -67,6 +68,14 @@ function Index() {
   const [configCarregada, setConfigCarregada] = useState(false);
   const [agoraTick, setAgoraTick] = useState(() => Date.now());
   const [formasPagamento, setFormasPagamento] = useState<string[]>([]);
+  const [cliente, setCliente] = useState<{ id: string; nome: string; telefone: string } | null>(null);
+  const [contaTelefone, setContaTelefone] = useState("");
+  const [contaNome, setContaNome] = useState("");
+  const [contaCodigo, setContaCodigo] = useState("");
+  const [contaEtapa, setContaEtapa] = useState<"dados" | "codigo">("dados");
+  const [contaCarregando, setContaCarregando] = useState(false);
+  const [contaErro, setContaErro] = useState("");
+  const [sessaoCarregando, setSessaoCarregando] = useState(true);
 
   useEffect(() => {
     let ativo = true;
@@ -120,14 +129,54 @@ function Index() {
   }, []);
 
   useEffect(() => {
+    let ativo = true;
+    const carregarSessaoCliente = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const perfil = await carregarClienteAtual();
+          if (ativo) setCliente(perfil);
+        } else if (ativo) {
+          setCliente(null);
+        }
+      } catch {
+        if (ativo) setCliente(null);
+      } finally {
+        if (ativo) setSessaoCarregando(false);
+      }
+    };
+    carregarSessaoCliente();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        setCliente(null);
+        return;
+      }
+      window.setTimeout(async () => {
+        try {
+          const perfil = await carregarClienteAtual();
+          if (ativo) setCliente(perfil);
+        } catch {
+          if (ativo) setCliente(null);
+        }
+      }, 0);
+    });
+
+    return () => {
+      ativo = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
     if (aba !== "pedidos" || checkoutEtapa !== 0) return;
     let ativo = true;
     const atualizarHistorico = async () => {
       try {
         const lista = await carregarPedidosCliente();
-        if (ativo) setPedidos(lista);
+        if (ativo) setPedidos(lista.length ? lista : pedidoAtual ? [pedidoAtual] : []);
       } catch {
-        // O histórico seguro é opcional para o funcionamento do cardápio.
+        if (ativo && pedidoAtual) setPedidos([pedidoAtual]);
       }
     };
     atualizarHistorico();
@@ -136,7 +185,7 @@ function Index() {
       ativo = false;
       window.clearInterval(timer);
     };
-  }, [aba, checkoutEtapa]);
+  }, [aba, checkoutEtapa, pedidoAtual?.numero]);
 
   const filtrados = useMemo(() => menu.filter((p) => (categoria === "Todos" || p.categoria === categoria) && `${p.nome} ${p.descricao}`.toLowerCase().includes(busca.toLowerCase())), [categoria, busca, menu]);
   const quantidade = sacola.reduce((t, i) => t + i.quantidade, 0);
@@ -155,6 +204,68 @@ function Index() {
     return abertura < fechamento ? minutos >= abertura && minutos < fechamento : minutos >= abertura || minutos < fechamento;
   }, [agoraTick, configCarregada, aceitaPedidos, horarioAbertura, horarioFechamento]);
  
+  async function enviarCodigoConta() {
+    setContaErro("");
+    if (contaNome.trim().length < 2) {
+      setContaErro("Informe seu nome.");
+      return;
+    }
+    if (contaTelefone.replace(/\D/g, "").length < 10) {
+      setContaErro("Informe um celular válido com DDD.");
+      return;
+    }
+    setContaCarregando(true);
+    try {
+      await enviarCodigoTelefone(contaTelefone);
+      setContaEtapa("codigo");
+    } catch (error) {
+      setContaErro(error instanceof Error ? error.message : "Não foi possível enviar o código.");
+    } finally {
+      setContaCarregando(false);
+    }
+  }
+
+  async function confirmarCodigoConta() {
+    setContaErro("");
+    if (contaCodigo.replace(/\D/g, "").length !== 6) {
+      setContaErro("Digite o código de 6 dígitos recebido no celular.");
+      return;
+    }
+    setContaCarregando(true);
+    try {
+      await confirmarCodigoTelefone(contaTelefone, contaCodigo);
+      const perfil = await sincronizarClienteAtual(contaNome, contaTelefone);
+      setCliente(perfil);
+      setContaEtapa("dados");
+      setContaCodigo("");
+      setAba("conta");
+      const lista = await carregarPedidosCliente();
+      setPedidos(lista);
+    } catch (error) {
+      setContaErro(error instanceof Error ? error.message : "Não foi possível confirmar o código.");
+    } finally {
+      setContaCarregando(false);
+    }
+  }
+
+  async function sairDaConta() {
+    setContaErro("");
+    setContaCarregando(true);
+    try {
+      await sairCliente();
+      setCliente(null);
+      setContaNome("");
+      setContaTelefone("");
+      setContaCodigo("");
+      setPedidos([]);
+      setContaEtapa("dados");
+    } catch (error) {
+      setContaErro(error instanceof Error ? error.message : "Não foi possível sair da conta.");
+    } finally {
+      setContaCarregando(false);
+    }
+  }
+
   function adicionar(produto: Produto) { setSacola((atual) => { const existe = atual.find((i) => i.id === produto.id); return existe ? atual.map((i) => i.id === produto.id ? { ...i, quantidade: i.quantidade + 1 } : i) : [...atual, { ...produto, quantidade: 1 }]; }); }
   function alterarQuantidade(id: string, delta: number) { setSacola((atual) => atual.map((i) => i.id === id ? { ...i, quantidade: i.quantidade + delta } : i).filter((i) => i.quantidade > 0)); }
   function abrirCheckout() {
@@ -278,8 +389,27 @@ function Index() {
           {(categoria === "Todos" ? categoriasMenu.slice(1) : [categoria]).map(cat => { const itens = filtrados.filter(p => p.categoria === cat); if (!itens.length) return null; const Icon = categoriaIcone(cat); return <section key={cat} className="mb-7"><div className="mb-3 flex items-center gap-3"><Icon className="size-6 text-[#ffc400]"/><h2 className="text-xl font-black">{cat}</h2></div><div className="space-y-2.5">{itens.map(p => <article key={p.id} className="flex min-h-[116px] overflow-hidden rounded-xl border border-white/15 bg-[#141617]"><div className="w-[112px] shrink-0 bg-black sm:w-36">{p.imagem ? <img src={p.imagem} alt={p.nome} loading="lazy" className="h-full min-h-[116px] w-full object-cover"/> : <div className="grid h-full min-h-[116px] place-items-center text-4xl">{cat === "Bebidas" ? "🥤" : cat === "Sorvetes" ? "🍨" : cat === "Pizzas" ? "🍕" : "🥪"}</div>}</div><div className="flex min-w-0 flex-1 items-center justify-between gap-2 p-3"><div className="min-w-0"><h3 className="text-sm font-bold">{p.nome}</h3><p className="mt-1 line-clamp-2 text-xs text-white/55">{p.descricao}</p><p className="mt-1.5 font-black text-[#ffc400]">{dinheiro(p.preco)}</p></div><button onClick={() => adicionar(p)} aria-label={`Adicionar ${p.nome}`} className="grid size-10 shrink-0 place-items-center rounded-full bg-[#ffc400] text-black"><Plus className="size-5"/></button></div></article>)}</div></section>; })}{filtrados.length === 0 && <p className="p-8 text-center text-white/50">Nenhum item encontrado.</p>}</section>
         <section className="border-t border-white/10 bg-[#111314] px-4 py-8 text-center"><p className="text-xs font-black uppercase tracking-[.2em] text-[#ffc400]">Estamos por aqui</p><h2 className="mt-2 text-2xl font-black">Lilhão, sabor que conquista</h2><div className="mt-5 flex flex-wrap justify-center gap-4 text-sm text-white/50"><span><Clock className="mr-1 inline size-4 text-[#ffc400]"/>{horarioAbertura} às {horarioFechamento}</span><span><Phone className="mr-1 inline size-4 text-[#ffc400]"/>Pedidos</span></div></section></main>}
 
-      {aba === "pedidos" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-6"><div className="flex items-center gap-3"><ClipboardList className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Sua conta</p><h1 className="text-2xl font-black">Meus pedidos</h1></div></div>{pedidos.length === 0 ? <div className="py-24 text-center"><ShoppingBag className="mx-auto size-12 text-white/20"/><h2 className="mt-4 text-lg font-bold">Nenhum pedido encontrado</h2><p className="mt-2 text-sm text-white/45">Seus pedidos ficam vinculados a um identificador seguro deste navegador e podem ser acompanhados aqui.</p><button onClick={() => setAba("inicio")} className={`${actionClass} mt-5`}>Ver cardápio</button></div> : <div className="mt-5 space-y-3">{pedidos.map(p => <article key={p.numero} className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex items-center justify-between gap-3"><div><p className="text-xs text-white/45">Pedido #{p.numero}</p><p className="mt-1 font-black">{new Date(p.criadoEm).toLocaleDateString("pt-BR")}</p></div><span className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-300">{p.status}</span></div><div className="mt-3 flex items-center justify-between"><p className="text-sm text-white/60">{p.itens.reduce((s,i)=>s+i.quantidade,0)} item(ns) • {p.entrega}</p><b className="text-[#ffc400]">{dinheiro(p.total)}</b></div><button onClick={() => setPedidoAtual(p)} className="mt-3 w-full rounded-lg border border-white/10 py-2.5 text-sm font-bold">Ver detalhes</button></article>)}</div>}{pedidoAtual && checkoutEtapa === 0 && <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/75" onClick={() => setPedidoAtual(null)}><section onClick={e=>e.stopPropagation()} className="max-h-[80dvh] w-full max-w-xl overflow-y-auto rounded-t-3xl border border-white/10 bg-[#141617] p-5"><div className="flex items-center justify-between"><h2 className="text-xl font-black">Pedido #{pedidoAtual.numero}</h2><button onClick={() => setPedidoAtual(null)}><X className="size-5"/></button></div><p className="mt-3 text-sm text-white/60">{pedidoAtual.nome} • {pedidoAtual.telefone}</p><p className="mt-1 text-sm">{pedidoAtual.endereco}</p><p className="mt-2 text-sm">Pagamento: {pedidoAtual.pagamento}</p><div className="mt-4 space-y-2 border-t border-white/10 pt-3">{pedidoAtual.itens.map(i=><div key={i.id} className="flex justify-between text-sm"><span>{i.quantidade}x {i.nome}</span><span>{dinheiro(i.preco*i.quantidade)}</span></div>)}</div><div className="mt-3 flex justify-between border-t border-white/10 pt-3 font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(pedidoAtual.total)}</span></div></section></div>}</main>}
-      {aba === "conta" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-8"><div className="flex items-center gap-3"><User className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Lilhão</p><h1 className="text-2xl font-black">Minha conta</h1></div></div><div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-5"><h2 className="font-black">Seus dados</h2><p className="mt-2 text-sm text-white/50">Informe seus dados durante a finalização do pedido. O histórico fica salvo neste navegador.</p><button onClick={abrirMeusPedidos} className={`${quietClass} mt-4 w-full`}>Consultar meus pedidos <ArrowRight className="ml-1 inline size-4"/></button></div></main>}
+      {aba === "pedidos" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-6"><div className="flex items-center gap-3"><ClipboardList className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Sua conta</p><h1 className="text-2xl font-black">Meus pedidos</h1></div></div>{pedidos.length === 0 ? <div className="py-24 text-center"><ShoppingBag className="mx-auto size-12 text-white/20"/><h2 className="mt-4 text-lg font-bold">Nenhum pedido encontrado</h2><p className="mt-2 text-sm text-white/45">{cliente ? "Seus pedidos ficam vinculados à sua conta e podem ser acompanhados em qualquer dispositivo." : "Você pode acompanhar pedidos feitos neste navegador. Ao criar sua conta, seus pedidos serão vinculados ao seu perfil."}</p><button onClick={() => setAba("inicio")} className={`${actionClass} mt-5`}>Ver cardápio</button></div> : <div className="mt-5 space-y-3">{pedidos.map(p => <article key={p.numero} className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex items-center justify-between gap-3"><div><p className="text-xs text-white/45">Pedido #{p.numero}</p><p className="mt-1 font-black">{new Date(p.criadoEm).toLocaleDateString("pt-BR")}</p></div><span className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-300">{p.status}</span></div><div className="mt-3 flex items-center justify-between"><p className="text-sm text-white/60">{p.itens.reduce((s,i)=>s+i.quantidade,0)} item(ns) • {p.entrega}</p><b className="text-[#ffc400]">{dinheiro(p.total)}</b></div><button onClick={() => setPedidoAtual(p)} className="mt-3 w-full rounded-lg border border-white/10 py-2.5 text-sm font-bold">Ver detalhes</button></article>)}</div>}{pedidoAtual && checkoutEtapa === 0 && <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/75" onClick={() => setPedidoAtual(null)}><section onClick={e=>e.stopPropagation()} className="max-h-[80dvh] w-full max-w-xl overflow-y-auto rounded-t-3xl border border-white/10 bg-[#141617] p-5"><div className="flex items-center justify-between"><h2 className="text-xl font-black">Pedido #{pedidoAtual.numero}</h2><button onClick={() => setPedidoAtual(null)}><X className="size-5"/></button></div><p className="mt-3 text-sm text-white/60">{pedidoAtual.nome} • {pedidoAtual.telefone}</p><p className="mt-1 text-sm">{pedidoAtual.endereco}</p><p className="mt-2 text-sm">Pagamento: {pedidoAtual.pagamento}</p><div className="mt-4 space-y-2 border-t border-white/10 pt-3">{pedidoAtual.itens.map(i=><div key={i.id} className="flex justify-between text-sm"><span>{i.quantidade}x {i.nome}</span><span>{dinheiro(i.preco*i.quantidade)}</span></div>)}</div><div className="mt-3 flex justify-between border-t border-white/10 pt-3 font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(pedidoAtual.total)}</span></div></section></div>}</main>}
+      {aba === "conta" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-8">
+        <div className="flex items-center gap-3"><User className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Sua conta</p><h1 className="text-2xl font-black">Minha conta</h1></div></div>
+        {sessaoCarregando ? <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-6 text-center text-white/50">Carregando sua conta...</div> : cliente ? <div className="mt-5 space-y-4">
+          <div className="rounded-2xl border border-white/10 bg-[#141617] p-5"><p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">Conta verificada</p><h2 className="mt-2 text-2xl font-black">{cliente.nome}</h2><p className="mt-1 text-sm text-white/50">{cliente.telefone}</p><div className="mt-5 grid gap-3 sm:grid-cols-2"><button onClick={abrirMeusPedidos} className="${actionClass} w-full">Meus pedidos <ArrowRight className="ml-1 inline size-4"/></button><button onClick={sairDaConta} disabled={contaCarregando} className="${quietClass} w-full">Sair da conta</button></div></div>
+          <div className="rounded-2xl border border-white/10 bg-[#141617] p-5"><h3 className="font-black">Seus dados</h3><p className="mt-2 text-sm text-white/50">Seus pedidos agora ficam vinculados à sua conta, e não apenas a este navegador.</p></div>
+        </div> : <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-5">
+          <p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">Entrar ou criar conta</p><h2 className="mt-2 text-2xl font-black">Acompanhe seus pedidos</h2><p className="mt-2 text-sm leading-relaxed text-white/50">Use seu celular para receber um código de acesso. Não precisa criar senha.</p>
+          {contaErro && <div className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-200">{contaErro}</div>}
+          {contaEtapa === "dados" ? <div className="mt-5 space-y-3">
+            <label className="block text-xs font-bold text-white/55">Nome<input value={contaNome} onChange={e=>setContaNome(e.target.value)} placeholder="Seu nome" className="${inputClass}"/></label>
+            <label className="block text-xs font-bold text-white/55">Celular<input value={contaTelefone} onChange={e=>setContaTelefone(e.target.value)} inputMode="tel" placeholder="(96) 99999-9999" className="${inputClass}"/></label>
+            <button onClick={enviarCodigoConta} disabled={contaCarregando} className="${actionClass} w-full">{contaCarregando ? "Enviando código..." : "Receber código por SMS"} <ArrowRight className="ml-1 inline size-4"/></button>
+            <p className="text-center text-[11px] text-white/35">Seu celular será usado para autenticar sua conta com um código único.</p>
+          </div> : <div className="mt-5 space-y-3">
+            <label className="block text-xs font-bold text-white/55">Código de 6 dígitos<input value={contaCodigo} onChange={e=>setContaCodigo(e.target.value.replace(/\D/g,"").slice(0,6))} inputMode="numeric" maxLength={6} placeholder="000000" className="${inputClass} text-center text-2xl font-black tracking-[.5em]"/></label>
+            <button onClick={confirmarCodigoConta} disabled={contaCarregando} className="${actionClass} w-full">{contaCarregando ? "Confirmando..." : "Confirmar código"}</button>
+            <button onClick={()=>{setContaEtapa("dados");setContaCodigo("");setContaErro("");}} className="${quietClass} w-full">Alterar celular</button>
+          </div>}
+        </div>}
+      </main>}
     </>}
 
     {quantidade > 0 && checkoutEtapa === 0 && <button onClick={() => setSacolaAberta(true)} className="fixed bottom-[88px] right-4 z-30 flex min-h-14 items-center gap-3 rounded-full bg-[#ffc400] px-5 font-black text-black shadow-xl md:bottom-6"><ShoppingBag className="size-5"/>Ver sacola • {dinheiro(subtotal)}</button>}
