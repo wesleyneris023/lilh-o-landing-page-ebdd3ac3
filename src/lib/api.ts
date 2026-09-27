@@ -87,7 +87,96 @@ export async function criarPedidoReal(input: {
   return body as { id: string; numero: string; subtotal: number; taxa_entrega: number; total: number; status: string; pagamento_status: string; cliente_token: string };
 }
 
+function mapPedido(row: any): Pedido {
+  return {
+    numero: row.numero,
+    criadoEm: row.criado_em,
+    itens: (row.pedido_itens || row.itens || []).map((i: any) => ({
+      id: i.produto_id || i.id,
+      nome: i.nome_produto || i.nome,
+      descricao: "",
+      preco: Number(i.preco_unitario ?? i.preco),
+      categoria: "",
+      quantidade: Number(i.quantidade),
+    })),
+    nome: row.nome_cliente,
+    telefone: row.telefone,
+    entrega: row.tipo_entrega === "retirada" ? "Retirada no local" : "Entrega",
+    endereco: formatEndereco(row.endereco),
+    pagamento: row.pagamento,
+    observacao: row.observacao || "",
+    subtotal: Number(row.subtotal),
+    taxa: Number(row.taxa_entrega),
+    total: Number(row.total),
+    status: row.status,
+  };
+}
+
+function normalizarTelefone(telefone: string) {
+  const digits = telefone.replace(/\D/g, "");
+  if (digits.startsWith("55")) return `+${digits}`;
+  return `+55${digits}`;
+}
+
+export async function carregarClienteAtual(): Promise<{ id: string; nome: string; telefone: string } | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data, error } = await supabase
+    .from("clientes")
+    .select("id,nome,telefone")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function enviarCodigoTelefone(telefone: string) {
+  const phone = normalizarTelefone(telefone);
+  const { error } = await supabase.auth.signInWithOtp({ phone });
+  if (error) throw error;
+  return phone;
+}
+
+export async function confirmarCodigoTelefone(telefone: string, codigo: string) {
+  const phone = normalizarTelefone(telefone);
+  const { data, error } = await supabase.auth.verifyOtp({
+    phone,
+    token: codigo.trim(),
+    type: "sms",
+  });
+  if (error) throw error;
+  return { ...data, phone };
+}
+
+export async function sincronizarClienteAtual(nome: string, telefone: string) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Faça login para continuar.");
+  const { data, error } = await supabase.rpc("vincular_cliente_atual", {
+    p_nome: nome.trim(),
+    p_telefone: telefone.trim(),
+    p_cliente_token: obterTokenCliente(),
+  });
+  if (error) throw error;
+  return data as { cliente_id: string; nome: string; telefone: string };
+}
+
+export async function sairCliente() {
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
+}
+
 export async function carregarPedidosCliente(): Promise<Pedido[]> {
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (session?.user) {
+    const { data, error } = await supabase
+      .from("pedidos")
+      .select("numero,criado_em,nome_cliente,telefone,tipo_entrega,endereco,pagamento,observacao,subtotal,taxa_entrega,total,status,pedido_itens(id,produto_id,nome_produto,preco_unitario,quantidade,total)")
+      .order("criado_em", { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapPedido);
+  }
+
   const token = obterTokenCliente();
   if (!token) return [];
   const response = await fetch(ORDER_FUNCTION_URL, {
@@ -101,28 +190,7 @@ export async function carregarPedidosCliente(): Promise<Pedido[]> {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body?.error || "Não foi possível carregar seus pedidos.");
   const lista = Array.isArray(body?.pedidos) ? body.pedidos : [];
-  return lista.map((p: any) => ({
-    numero: p.numero,
-    criadoEm: p.criado_em,
-    itens: (p.itens || []).map((i: any) => ({
-      id: i.id,
-      nome: i.nome,
-      descricao: "",
-      preco: Number(i.preco),
-      categoria: "",
-      quantidade: Number(i.quantidade),
-    })),
-    nome: p.nome_cliente,
-    telefone: p.telefone,
-    entrega: p.tipo_entrega === "retirada" ? "Retirada no local" : "Entrega",
-    endereco: formatEndereco(p.endereco),
-    pagamento: p.pagamento,
-    observacao: p.observacao || "",
-    subtotal: Number(p.subtotal),
-    taxa: Number(p.taxa_entrega),
-    total: Number(p.total),
-    status: p.status,
-  }));
+  return lista.map(mapPedido);
 }
 
 export async function carregarPedidosAdmin(): Promise<Pedido[]> {
