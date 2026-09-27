@@ -224,9 +224,10 @@ function Index() {
   }
   async function abrirMeusPedidos() {
     try {
-      setPedidos(await carregarPedidosCliente());
+      const lista = await carregarPedidosCliente();
+      setPedidos(lista.length ? lista : pedidoAtual ? [pedidoAtual] : []);
     } catch {
-      setPedidos([]);
+      setPedidos(pedidoAtual ? [pedidoAtual] : []);
     }
     setAba("pedidos");
     setCheckoutEtapa(0);
