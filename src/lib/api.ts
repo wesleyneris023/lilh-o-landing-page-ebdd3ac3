@@ -81,6 +81,9 @@ export async function criarPedidoReal(input: {
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body?.error || "Não foi possível criar o pedido.");
+  if (typeof window !== "undefined" && typeof body?.cliente_token === "string" && body.cliente_token.length >= 32) {
+    window.localStorage.setItem(CLIENTE_TOKEN_KEY, body.cliente_token);
+  }
   return body as { id: string; numero: string; subtotal: number; taxa_entrega: number; total: number; status: string; pagamento_status: string; cliente_token: string };
 }
 
