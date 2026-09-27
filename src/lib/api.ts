@@ -149,16 +149,26 @@ export async function confirmarCodigoTelefone(telefone: string, codigo: string) 
 }
 
 export async function sincronizarClienteAtual(nome: string, telefone: string) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Faça login para continuar.");
-  const telefoneVerificado = user.phone || telefone;
-  const { data, error } = await supabase.rpc("vincular_cliente_atual", {
-    p_nome: nome.trim(),
-    p_telefone: telefoneVerificado.trim(),
-    p_cliente_token: obterTokenCliente(),
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) throw new Error("Faça login para continuar.");
+  const telefoneVerificado = session.user.phone || telefone;
+  const response = await fetch(ORDER_FUNCTION_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || "",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      acao: "vincular",
+      nome: nome.trim(),
+      telefone: telefoneVerificado.trim(),
+      cliente_token: obterTokenCliente(),
+    }),
   });
-  if (error) throw error;
-  return data as { cliente_id: string; nome: string; telefone: string };
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body?.error || "Não foi possível salvar sua conta.");
+  return body as { cliente_id: string; nome: string; telefone: string };
 }
 
 export async function sairCliente() {
