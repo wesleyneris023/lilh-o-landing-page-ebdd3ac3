@@ -169,6 +169,12 @@ function Index() {
   }, []);
 
   useEffect(() => {
+    if (!cliente) return;
+    setNome(cliente.nome);
+    setTelefone(cliente.telefone);
+  }, [cliente]);
+
+  useEffect(() => {
     if (aba !== "pedidos" || checkoutEtapa !== 0) return;
     let ativo = true;
     const atualizarHistorico = async () => {
