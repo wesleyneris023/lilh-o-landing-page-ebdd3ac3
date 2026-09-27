@@ -151,9 +151,10 @@ export async function confirmarCodigoTelefone(telefone: string, codigo: string) 
 export async function sincronizarClienteAtual(nome: string, telefone: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Faça login para continuar.");
+  const telefoneVerificado = user.phone || telefone;
   const { data, error } = await supabase.rpc("vincular_cliente_atual", {
     p_nome: nome.trim(),
-    p_telefone: telefone.trim(),
+    p_telefone: telefoneVerificado.trim(),
     p_cliente_token: obterTokenCliente(),
   });
   if (error) throw error;
