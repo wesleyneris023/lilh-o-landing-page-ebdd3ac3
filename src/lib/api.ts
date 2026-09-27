@@ -48,6 +48,17 @@ export async function carregarCategorias(): Promise<string[]> {
   return ["Todos", ...(data || []).map((item) => item.nome)];
 }
 
+const CLIENTE_TOKEN_KEY = "lilhao-cliente-token-v1";
+
+function obterTokenCliente() {
+  if (typeof window === "undefined") return "";
+  const existente = window.localStorage.getItem(CLIENTE_TOKEN_KEY);
+  if (existente && existente.length >= 32) return existente;
+  const token = `${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`;
+  window.localStorage.setItem(CLIENTE_TOKEN_KEY, token);
+  return token;
+}
+
 export async function criarPedidoReal(input: {
   nome: string;
   telefone: string;
@@ -58,6 +69,7 @@ export async function criarPedidoReal(input: {
   itens: Array<{ id: string; quantidade: number }>;
 }) {
   const { data: { session } } = await supabase.auth.getSession();
+  const cliente_token = obterTokenCliente();
   const response = await fetch(ORDER_FUNCTION_URL, {
     method: "POST",
     headers: {
@@ -65,11 +77,49 @@ export async function criarPedidoReal(input: {
       apikey: import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || "",
       ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
     },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, cliente_token }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body?.error || "Não foi possível criar o pedido.");
-  return body as { id: string; numero: string; subtotal: number; taxa_entrega: number; total: number; status: string; pagamento_status: string };
+  return body as { id: string; numero: string; subtotal: number; taxa_entrega: number; total: number; status: string; pagamento_status: string; cliente_token: string };
+}
+
+export async function carregarPedidosCliente(): Promise<Pedido[]> {
+  const token = obterTokenCliente();
+  if (!token) return [];
+  const response = await fetch(ORDER_FUNCTION_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || "",
+    },
+    body: JSON.stringify({ acao: "consultar", cliente_token: token }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body?.error || "Não foi possível carregar seus pedidos.");
+  const lista = Array.isArray(body?.pedidos) ? body.pedidos : [];
+  return lista.map((p: any) => ({
+    numero: p.numero,
+    criadoEm: p.criado_em,
+    itens: (p.itens || []).map((i: any) => ({
+      id: i.id,
+      nome: i.nome,
+      descricao: "",
+      preco: Number(i.preco),
+      categoria: "",
+      quantidade: Number(i.quantidade),
+    })),
+    nome: p.nome_cliente,
+    telefone: p.telefone,
+    entrega: p.tipo_entrega === "retirada" ? "Retirada no local" : "Entrega",
+    endereco: formatEndereco(p.endereco),
+    pagamento: p.pagamento,
+    observacao: p.observacao || "",
+    subtotal: Number(p.subtotal),
+    taxa: Number(p.taxa_entrega),
+    total: Number(p.total),
+    status: p.status,
+  }));
 }
 
 export async function carregarPedidosAdmin(): Promise<Pedido[]> {
