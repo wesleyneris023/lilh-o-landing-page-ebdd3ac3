@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Clock, Copy, CreditCard, Flame, Home, LayoutDashboard, MapPin, Minus, PackageCheck, Phone, Plus, QrCode, Search, ShoppingBag, Store, Trash2, User, Utensils, X } from "lucide-react";
 import heroBurger from "@/assets/hero-burger.jpg";
 
-import { categorias, dinheiro, lerPedidos, lerProdutos, salvarPedidos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
+import { categorias, dinheiro, lerProdutos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
 import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente } from "@/lib/api";
 const PIX_CODIGO_DEMO = "00020126580014BR.GOV.BCB.PIX0136lilhao-demo-pagamento-nao-real-5204000053039865406";
 function categoriaIcone(cat: string) {
