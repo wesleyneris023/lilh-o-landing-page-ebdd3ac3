@@ -109,6 +109,18 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const rateLimitKey = `ip:${await sha256Hex(`${key}:${clientIp}`)}`;
+    const { data: rateAttempts, error: rateError } = await admin.rpc("registrar_tentativa_pedido", {
+      p_rate_limit_key: rateLimitKey,
+    });
+    if (rateError) throw rateError;
+    if (Number(rateAttempts) > 10) {
+      return new Response(JSON.stringify({ error: "Muitas tentativas de pedido. Aguarde alguns minutos e tente novamente." }), {
+        status: 429,
+        headers: { ...cors, "Content-Type": "application/json", "Retry-After": "600" },
+      });
+    }
+
     const { data, error } = await admin.rpc("criar_pedido", {
       p_nome: body.nome,
       p_telefone: verifiedPhone || body.telefone,
@@ -120,7 +132,6 @@ Deno.serve(async (req: Request) => {
       p_cliente_token: body.cliente_token,
       p_auth_user_id: authUserId,
       p_idempotency_key: typeof body.idempotency_key === "string" ? body.idempotency_key.trim() : "",
-      p_rate_limit_key: `ip:${await sha256Hex(`${key}:${clientIp}`)}`,
     });
 
     if (error) throw error;
