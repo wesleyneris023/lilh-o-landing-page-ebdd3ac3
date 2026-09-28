@@ -183,7 +183,7 @@ function Dashboard() {
     : null;
   const crescimentoTexto = crescimentoSemana === null
     ? vendasSemanaAtual > 0 ? "Novo" : "Sem comparação"
-    : `${crescimentoSemana >= 0 ? "↑" : "↓"} ${Math.abs(crescimentoSemana).toFixed(1)}%`;
+    : `${crescimentoSemana >= 0 ? "↑" : "↓"} ${crescimentoTexto`;
 
   const statusData = useMemo(() => {
     const nomes = ["Recebido", "Em preparo", "Pronto", "Saiu para entrega", "Concluído", "Cancelado"];
@@ -337,7 +337,7 @@ function Dashboard() {
 
           <div className="grid gap-5 xl:grid-cols-[1.45fr_.8fr_.8fr]">
             <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
-              <div className="flex items-start justify-between gap-4"><div><p className="text-sm font-black">Vendas dos últimos 7 dias</p><div className="mt-1 flex items-end gap-3"><b className="text-2xl">{dinheiro(vendasSemanaAtual)}</b><span className="mb-1 text-xs font-bold text-emerald-300">↑ {Math.abs(crescimentoSemana).toFixed(1)}%</span></div></div><span className="rounded-lg border border-white/10 px-3 py-1.5 text-[10px] font-bold text-white/50">Vendas (R$)</span></div>
+              <div className="flex items-start justify-between gap-4"><div><p className="text-sm font-black">Vendas dos últimos 7 dias</p><div className="mt-1 flex items-end gap-3"><b className="text-2xl">{dinheiro(vendasSemanaAtual)}</b><span className="mb-1 text-xs font-bold text-emerald-300">↑ {crescimentoTexto</span></div></div><span className="rounded-lg border border-white/10 px-3 py-1.5 text-[10px] font-bold text-white/50">Vendas (R$)</span></div>
               <div className="mt-4 h-[230px] w-full">
                 <ResponsiveContainer width="100%" height="100%"><AreaChart data={vendasUltimos7Dias}>
                   <defs><linearGradient id="lilhaoSalesGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ffc400" stopOpacity={0.35}/><stop offset="100%" stopColor="#ffc400" stopOpacity={0}/></linearGradient></defs>
@@ -383,7 +383,7 @@ function Dashboard() {
             </article>
 
             <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
-              <div className="flex items-center justify-between"><div><h2 className="font-black">Comparativo de vendas</h2><p className="mt-1 text-xs text-white/35">7 dias atuais x anteriores</p></div><span className="font-black text-emerald-300">↑ {Math.abs(crescimentoSemana).toFixed(1)}%</span></div>
+              <div className="flex items-center justify-between"><div><h2 className="font-black">Comparativo de vendas</h2><p className="mt-1 text-xs text-white/35">7 dias atuais x anteriores</p></div><span className="font-black text-emerald-300">↑ {crescimentoTexto</span></div>
               <div className="mt-7 space-y-5">
                 <div><div className="mb-2 flex justify-between text-xs"><span className="text-white/55">Período atual</span><b>{dinheiro(vendasSemanaAtual)}</b></div><div className="h-3 overflow-hidden rounded-full bg-white/[.06]"><div className="h-full rounded-full bg-[#ffc400]" style={{width:(vendasSemanaAtual / Math.max(vendasSemanaAtual, vendasSemanaAnterior, 1))*100+"%"}}/></div></div>
                 <div><div className="mb-2 flex justify-between text-xs"><span className="text-white/55">Período anterior</span><b>{dinheiro(vendasSemanaAnterior)}</b></div><div className="h-3 overflow-hidden rounded-full bg-white/[.06]"><div className="h-full rounded-full bg-white/30" style={{width:(vendasSemanaAnterior / Math.max(vendasSemanaAtual, vendasSemanaAnterior, 1))*100+"%"}}/></div></div>
