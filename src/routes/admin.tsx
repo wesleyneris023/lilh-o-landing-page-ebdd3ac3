@@ -1,6 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-import LilhaoAdminDashboard from "@/components/LilhaoAdminDashboard";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/admin")({
-  component: LilhaoAdminDashboard,
+  beforeLoad: () => {
+    throw redirect({ to: "/dashboard" });
+  },
 });
