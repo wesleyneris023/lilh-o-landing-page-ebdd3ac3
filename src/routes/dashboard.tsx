@@ -208,7 +208,7 @@ function Dashboard() {
       .slice(0, 5);
   }, [pedidosValidos, produtos, agora]);
 
-  const coresGrafico = ["#ffc400", "#36a3ff", "#9b5cff", "#35d07f", "#ff5b5b", "#8b94a7"];
+  const coresGrafico = ["#ffc400", "#36a3ff", "#9b5cff", "#35d07f", "#ff5b5b", "#8b94a7"];\n  const corGrafico = (index: number) => coresGrafico[index % coresGrafico.length] ?? "#8b94a7";
   const formatarPercentual = (valor: number, total: number) => total ? Math.round((valor / total) * 100) + "%" : "0%";
   const filtrados = useMemo(() => produtos.filter(p => (p.nome+" "+p.descricao+" "+p.categoria).toLowerCase().includes(busca.toLowerCase())), [produtos,busca]);
 
@@ -319,14 +319,14 @@ function Dashboard() {
 
             <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
               <div className="flex items-center justify-between"><div><p className="text-sm font-black">Pedidos por status</p><p className="mt-1 text-[11px] text-white/35">Hoje</p></div><ClipboardList className="size-5 text-[#ffc400]"/></div>
-              <div className="mt-2 h-[220px]">{statusData.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={statusData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={80} paddingAngle={3}>{statusData.map((_, i) => <Cell key={i} fill={coresGrafico[i % coresGrafico.length]}/>)}</Pie><Tooltip contentStyle={{background:"#101314",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"#fff"}}/></PieChart></ResponsiveContainer> : <div className="grid h-full place-items-center text-sm text-white/30">Nenhum pedido hoje.</div>}</div>
-              <div className="grid grid-cols-2 gap-2">{statusData.slice(0,6).map((item, i) => <div key={item.name} className="flex items-center gap-2 text-[11px] text-white/55"><span className="size-2.5 rounded-full" style={{background:coresGrafico[i % coresGrafico.length]}}/>{item.name}<b className="ml-auto text-white/75">{item.value}</b></div>)}</div>
+              <div className="mt-2 h-[220px]">{statusData.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={statusData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={80} paddingAngle={3}>{statusData.map((_, i) => <Cell key={i} fill={corGrafico(i)}/>)}</Pie><Tooltip contentStyle={{background:"#101314",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"#fff"}}/></PieChart></ResponsiveContainer> : <div className="grid h-full place-items-center text-sm text-white/30">Nenhum pedido hoje.</div>}</div>
+              <div className="grid grid-cols-2 gap-2">{statusData.slice(0,6).map((item, i) => <div key={item.name} className="flex items-center gap-2 text-[11px] text-white/55"><span className="size-2.5 rounded-full" style={{background:corGrafico(i)}}/>{item.name}<b className="ml-auto text-white/75">{item.value}</b></div>)}</div>
             </article>
 
             <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
               <div className="flex items-center justify-between"><div><p className="text-sm font-black">Formas de pagamento</p><p className="mt-1 text-[11px] text-white/35">Hoje</p></div><CircleDollarSign className="size-5 text-[#ffc400]"/></div>
-              <div className="mt-2 h-[220px]">{pagamentoData.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={pagamentoData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={78} paddingAngle={3}>{pagamentoData.map((_, i) => <Cell key={i} fill={coresGrafico[i % coresGrafico.length]}/>)}</Pie><Tooltip contentStyle={{background:"#101314",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"#fff"}} formatter={(value) => [dinheiro(Number(value)), "Total"]}/></PieChart></ResponsiveContainer> : <div className="grid h-full place-items-center text-sm text-white/30">Nenhum pagamento hoje.</div>}</div>
-              <div className="space-y-2">{pagamentoData.slice(0,4).map((item, i) => <div key={item.name} className="flex items-center gap-2 text-[11px]"><span className="size-2.5 rounded-full" style={{background:coresGrafico[i % coresGrafico.length]}}/><span className="text-white/55">{item.name}</span><b className="ml-auto">{formatarPercentual(item.value, vendasHoje)}</b></div>)}</div>
+              <div className="mt-2 h-[220px]">{pagamentoData.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={pagamentoData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={78} paddingAngle={3}>{pagamentoData.map((_, i) => <Cell key={i} fill={corGrafico(i)}/>)}</Pie><Tooltip contentStyle={{background:"#101314",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"#fff"}} formatter={(value) => [dinheiro(Number(value)), "Total"]}/></PieChart></ResponsiveContainer> : <div className="grid h-full place-items-center text-sm text-white/30">Nenhum pagamento hoje.</div>}</div>
+              <div className="space-y-2">{pagamentoData.slice(0,4).map((item, i) => <div key={item.name} className="flex items-center gap-2 text-[11px]"><span className="size-2.5 rounded-full" style={{background:corGrafico(i)}}/><span className="text-white/55">{item.name}</span><b className="ml-auto">{formatarPercentual(item.value, vendasHoje)}</b></div>)}</div>
             </article>
           </div>
 
@@ -343,7 +343,7 @@ function Dashboard() {
 
             <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
               <div className="flex items-center justify-between"><div><h2 className="font-black">Vendas por categoria</h2><p className="mt-1 text-xs text-white/35">Últimos 7 dias</p></div><BarChart3 className="size-5 text-[#ffc400]"/></div>
-              <div className="mt-4 space-y-4">{categoriasData.map((item, i) => { const max = categoriasData[0]?.value || 1; return <div key={item.name}><div className="mb-1 flex items-center justify-between gap-3 text-xs"><span className="truncate text-white/60">{item.name}</span><b>{dinheiro(item.value)}</b></div><div className="h-2 overflow-hidden rounded-full bg-white/[.06]"><div className="h-full rounded-full" style={{width:Math.max(4,(item.value/max)*100)+"%",background:coresGrafico[i % coresGrafico.length]}}/></div></div>; })}{!categoriasData.length && <div className="py-12 text-center text-sm text-white/30">Sem dados de categoria.</div>}</div>
+              <div className="mt-4 space-y-4">{categoriasData.map((item, i) => { const max = categoriasData[0]?.value || 1; return <div key={item.name}><div className="mb-1 flex items-center justify-between gap-3 text-xs"><span className="truncate text-white/60">{item.name}</span><b>{dinheiro(item.value)}</b></div><div className="h-2 overflow-hidden rounded-full bg-white/[.06]"><div className="h-full rounded-full" style={{width:Math.max(4,(item.value/max)*100)+"%",background:corGrafico(i)}}/></div></div>; })}{!categoriasData.length && <div className="py-12 text-center text-sm text-white/30">Sem dados de categoria.</div>}</div>
             </article>
           </div>
 
