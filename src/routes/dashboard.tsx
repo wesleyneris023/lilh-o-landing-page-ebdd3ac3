@@ -208,7 +208,8 @@ function Dashboard() {
       .slice(0, 5);
   }, [pedidosValidos, produtos, agora]);
 
-  const coresGrafico = ["#ffc400", "#36a3ff", "#9b5cff", "#35d07f", "#ff5b5b", "#8b94a7"];\n  const corGrafico = (index: number) => coresGrafico[index % coresGrafico.length] ?? "#8b94a7";
+  const coresGrafico = ["#ffc400", "#36a3ff", "#9b5cff", "#35d07f", "#ff5b5b", "#8b94a7"];
+  const corGrafico = (index: number) => coresGrafico[index % coresGrafico.length] ?? "#8b94a7";
   const formatarPercentual = (valor: number, total: number) => total ? Math.round((valor / total) * 100) + "%" : "0%";
   const filtrados = useMemo(() => produtos.filter(p => (p.nome+" "+p.descricao+" "+p.categoria).toLowerCase().includes(busca.toLowerCase())), [produtos,busca]);
 
