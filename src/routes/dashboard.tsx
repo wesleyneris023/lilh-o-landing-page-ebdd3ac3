@@ -291,14 +291,14 @@ function Dashboard() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-            {[
-              ["Vendas hoje", dinheiro(vendasHoje), "↑ " + Math.abs(crescimentoSemana).toFixed(1) + "%", CircleDollarSign, "text-[#ffc400]"],
+            {([
+              ["Vendas hoje", dinheiro(vendasHoje), "↑ " + Math.abs(crescimentoSemana).toFixed(1) + "% no período", CircleDollarSign, "text-[#ffc400]"],
               ["Pedidos hoje", String(pedidosHoje.length), pedidosPendentes ? String(pedidosPendentes) + " pendentes" : "Sem pendências", ShoppingCart, "text-[#36a3ff]"],
               ["Ticket médio", dinheiro(ticketMedio), "por pedido", TrendingUp, "text-[#9b5cff]"],
               ["Itens vendidos", String(itensVendidos), "pedidos registrados", BarChart3, "text-[#35d07f]"],
               ["Produtos ativos", String(produtos.length), "no cardápio", Package, "text-[#ff9d2e]"],
               ["Clientes hoje", String(clientesHoje), "clientes identificados", Users, "text-[#ff5b78]"],
-            ].map(([label, value, detalhe, Icon, cor]) => (
+            ] as const).map(([label, value, detalhe, Icon, cor]) => (
               <article key={String(label)} className="rounded-2xl border border-white/10 bg-[#141617] p-4 shadow-[0_12px_30px_rgba(0,0,0,.12)]">
                 <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold text-white/50">{label}</p><span className={"grid size-9 place-items-center rounded-xl bg-white/[.04] " + String(cor)}><Icon className="size-5"/></span></div>
                 <p className="mt-4 text-2xl font-black tracking-tight">{value}</p><p className="mt-1 text-[11px] text-emerald-300">{detalhe}</p>
@@ -312,7 +312,7 @@ function Dashboard() {
               <div className="mt-4 h-[230px] w-full">
                 <ResponsiveContainer width="100%" height="100%"><AreaChart data={vendasUltimos7Dias}>
                   <defs><linearGradient id="lilhaoSalesGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ffc400" stopOpacity={0.35}/><stop offset="100%" stopColor="#ffc400" stopOpacity={0}/></linearGradient></defs>
-                  <CartesianGrid stroke="#ffffff10" vertical={false}/><XAxis dataKey="dia" stroke="#ffffff45" tickLine={false} axisLine={false} fontSize={10}/><YAxis stroke="#ffffff45" tickLine={false} axisLine={false} fontSize={10} tickFormatter={(v) => "R$" + v}/><Tooltip contentStyle={{background:"#101314",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"#fff"}} formatter={(value: number) => [dinheiro(value), "Vendas"]}/><Area type="monotone" dataKey="vendas" stroke="#ffc400" strokeWidth={3} fill="url(#lilhaoSalesGradient)" dot={{r:3,fill:"#ffc400",strokeWidth:0}}/>
+                  <CartesianGrid stroke="#ffffff10" vertical={false}/><XAxis dataKey="dia" stroke="#ffffff45" tickLine={false} axisLine={false} fontSize={10}/><YAxis stroke="#ffffff45" tickLine={false} axisLine={false} fontSize={10} tickFormatter={(v) => "R$" + v}/><Tooltip contentStyle={{background:"#101314",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"#fff"}} formatter={(value) => [dinheiro(Number(value)), "Vendas"]}/><Area type="monotone" dataKey="vendas" stroke="#ffc400" strokeWidth={3} fill="url(#lilhaoSalesGradient)" dot={{r:3,fill:"#ffc400",strokeWidth:0}}/>
                 </AreaChart></ResponsiveContainer>
               </div>
             </article>
@@ -325,7 +325,7 @@ function Dashboard() {
 
             <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
               <div className="flex items-center justify-between"><div><p className="text-sm font-black">Formas de pagamento</p><p className="mt-1 text-[11px] text-white/35">Hoje</p></div><CircleDollarSign className="size-5 text-[#ffc400]"/></div>
-              <div className="mt-2 h-[220px]">{pagamentoData.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={pagamentoData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={78} paddingAngle={3}>{pagamentoData.map((_, i) => <Cell key={i} fill={coresGrafico[i % coresGrafico.length]}/>)}</Pie><Tooltip contentStyle={{background:"#101314",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"#fff"}} formatter={(value: number) => [dinheiro(value), "Total"]}/></PieChart></ResponsiveContainer> : <div className="grid h-full place-items-center text-sm text-white/30">Nenhum pagamento hoje.</div>}</div>
+              <div className="mt-2 h-[220px]">{pagamentoData.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={pagamentoData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={78} paddingAngle={3}>{pagamentoData.map((_, i) => <Cell key={i} fill={coresGrafico[i % coresGrafico.length]}/>)}</Pie><Tooltip contentStyle={{background:"#101314",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"#fff"}} formatter={(value) => [dinheiro(Number(value)), "Total"]}/></PieChart></ResponsiveContainer> : <div className="grid h-full place-items-center text-sm text-white/30">Nenhum pagamento hoje.</div>}</div>
               <div className="space-y-2">{pagamentoData.slice(0,4).map((item, i) => <div key={item.name} className="flex items-center gap-2 text-[11px]"><span className="size-2.5 rounded-full" style={{background:coresGrafico[i % coresGrafico.length]}}/><span className="text-white/55">{item.name}</span><b className="ml-auto">{formatarPercentual(item.value, vendasHoje)}</b></div>)}</div>
             </article>
           </div>
