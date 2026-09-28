@@ -67,6 +67,7 @@ export async function criarPedidoReal(input: {
   pagamento: string;
   observacao: string;
   itens: Array<{ id: string; quantidade: number }>;
+  idempotency_key: string;
 }) {
   const { data: { session } } = await supabase.auth.getSession();
   const cliente_token = obterTokenCliente();
@@ -77,7 +78,7 @@ export async function criarPedidoReal(input: {
       apikey: import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || "",
       ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
     },
-    body: JSON.stringify({ ...input, cliente_token }),
+    body: JSON.stringify({ ...input, cliente_token, idempotency_key: input.idempotency_key }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body?.error || "Não foi possível criar o pedido.");
