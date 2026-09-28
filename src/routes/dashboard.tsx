@@ -291,7 +291,7 @@ function Dashboard() {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-6">
             {([
               ["Vendas hoje", dinheiro(vendasHoje), "↑ " + Math.abs(crescimentoSemana).toFixed(1) + "% no período", CircleDollarSign, "text-[#ffc400]"],
               ["Pedidos hoje", String(pedidosHoje.length), pedidosPendentes ? String(pedidosPendentes) + " pendentes" : "Sem pendências", ShoppingCart, "text-[#36a3ff]"],
