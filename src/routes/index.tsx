@@ -59,6 +59,7 @@ function Index() {
   const [carregandoMenu, setCarregandoMenu] = useState(true);
   const [erroMenu, setErroMenu] = useState("");
   const [enviandoPedido, setEnviandoPedido] = useState(false);
+  const [pedidoIdempotencyKey, setPedidoIdempotencyKey] = useState("");
   const [erroCheckout, setErroCheckout] = useState("");
   const [taxaEntregaConfigurada, setTaxaEntregaConfigurada] = useState(0);
   const [pedidoMinimo, setPedidoMinimo] = useState(0);
@@ -93,8 +94,8 @@ function Index() {
         const cats = categoriasResult.status === "fulfilled" ? categoriasResult.value : null;
         const cfg = configResult.status === "fulfilled" ? configResult.value : null;
         const formas = formasResult.status === "fulfilled" ? formasResult.value : null;
-        setMenu(produtos ?? lerProdutos());
-        setCategoriasMenu(cats ?? categorias);
+        setMenu(produtos ?? []);
+        setCategoriasMenu(cats ?? ["Todos"]);
         if (cfg) {
           setTaxaEntregaConfigurada(Number(cfg.taxa_entrega || 0));
           setPedidoMinimo(Number(cfg.pedido_minimo || 0));
@@ -109,13 +110,13 @@ function Index() {
           setErroMenu("");
         } else {
           const failed = [catalogoResult, categoriasResult, configResult, formasResult].filter((r) => r.status === "rejected").length;
-          setErroMenu("Alguns dados online não puderam ser carregados (" + failed + "). O restante do cardápio continua disponível.");
+          setErroMenu("Alguns dados online não puderam ser carregados (" + failed + "). Por segurança, o checkout fica indisponível até os dados online serem recuperados.");
         }
       } catch {
         if (!ativo) return;
-        setErroMenu("Não foi possível carregar o cardápio online. Exibindo o catálogo de demonstração.");
-        setMenu(lerProdutos());
-        setCategoriasMenu(categorias);
+        setErroMenu("Não foi possível carregar o cardápio online. Atualize a página e tente novamente.");
+        setMenu([]);
+        setCategoriasMenu(["Todos"]);
       } finally {
         if (ativo) setCarregandoMenu(false);
       }
@@ -290,6 +291,7 @@ function Index() {
     }
     if (!sacola.length) return;
     setSacolaAberta(false);
+    setPedidoIdempotencyKey(crypto.randomUUID());
     setCheckoutEtapa(1);
     setAba("inicio");
   }
@@ -300,6 +302,8 @@ function Index() {
     if (!sacola.length || enviandoPedido) return;
     setErroCheckout("");
     setEnviandoPedido(true);
+    const idempotencyKey = pedidoIdempotencyKey || crypto.randomUUID();
+    if (!pedidoIdempotencyKey) setPedidoIdempotencyKey(idempotencyKey);
     const enderecoTexto = tipoEntrega === "retirada"
       ? "Retirada no local"
       : rua + ", " + numero + " — " + bairro + (complemento ? ", " + complemento : "") + (referencia ? " (Ref.: " + referencia + ")" : "");
@@ -312,6 +316,7 @@ function Index() {
         pagamento,
         observacao,
         itens: sacola.map((item) => ({ id: item.id, quantidade: item.quantidade })),
+        idempotency_key: idempotencyKey,
       });
       const novo: Pedido = {
         numero: criado.numero,
@@ -332,6 +337,7 @@ function Index() {
       setPedidoAtual(novo);
       setSacola([]);
       setPixPago(false);
+      setPedidoIdempotencyKey("");
       setCheckoutEtapa(5);
     } catch (error) {
       setErroCheckout(error instanceof Error ? error.message : "Não foi possível enviar o pedido. Tente novamente.");
