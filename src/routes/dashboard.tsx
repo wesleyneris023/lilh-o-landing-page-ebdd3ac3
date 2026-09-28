@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { BarChart3, Check, ClipboardList, ExternalLink, LayoutDashboard, LogIn, Package, Plus, Search, Settings, ShieldAlert, Utensils, X } from "lucide-react";
+import { BarChart3, Check, ClipboardList, ExternalLink, LayoutDashboard, LogIn, Package, Plus, Search, Settings, ShieldAlert, Utensils, X, TrendingUp, Users, ShoppingCart, CircleDollarSign, Clock3, Truck, Store, CalendarDays } from "lucide-react";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { categorias, dinheiro, type Pedido, type Produto } from "@/data/store";
 import { atualizarStatusPedido, carregarConfiguracoes, carregarPedidosAdmin, carregarProdutosAdmin, ehAdmin, salvarConfiguracoes, salvarProdutoDb, excluirProdutoDb } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
@@ -114,30 +115,101 @@ function Dashboard() {
     return () => { supabase.removeChannel(channel); };
   }, [autorizado]);
 
+  const pedidosValidos = useMemo(() => pedidos.filter((p) => p.status !== "Cancelado"), [pedidos]);
   const pedidosHoje = useMemo(() => {
-    const hoje = new Date().toLocaleDateString("pt-BR");
-    return pedidos.filter(p => new Date(p.criadoEm).toLocaleDateString("pt-BR") === hoje);
-  }, [pedidos]);
-  const vendasHoje = pedidosHoje.reduce((s,p)=>s+p.total,0);
-  const itensVendidos = pedidosHoje.reduce((s,p)=>s+p.itens.reduce((a,i)=>a+i.quantidade,0),0);
-  const lojaAberta = useMemo(() => {
-    if (!config?.aceita_pedidos) return false;
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/Sao_Paulo",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).formatToParts(agora);
-    const hora = Number(parts.find((p) => p.type === "hour")?.value || 0);
-    const minuto = Number(parts.find((p) => p.type === "minute")?.value || 0);
-    const atual = hora * 60 + minuto;
-    const [oh, om] = String(config.horario_abertura || "18:00").split(":").map(Number);
-    const [ch, cm] = String(config.horario_fechamento || "23:30").split(":").map(Number);
-    const abertura = (oh || 0) * 60 + (om || 0);
-    const fechamento = (ch || 0) * 60 + (cm || 0);
-    if (abertura === fechamento) return true;
-    return abertura < fechamento ? atual >= abertura && atual < fechamento : atual >= abertura || atual < fechamento;
-  }, [config, agora]);
+    const hoje = agora.toLocaleDateString("pt-BR");
+    return pedidosValidos.filter((p) => new Date(p.criadoEm).toLocaleDateString("pt-BR") === hoje);
+  }, [pedidosValidos, agora]);
+
+  const vendasHoje = pedidosHoje.reduce((s, p) => s + p.total, 0);
+  const itensVendidos = pedidosHoje.reduce((s, p) => s + p.itens.reduce((a, i) => a + i.quantidade, 0), 0);
+  const ticketMedio = pedidosHoje.length ? vendasHoje / pedidosHoje.length : 0;
+  const pedidosPendentes = pedidosHoje.filter((p) => ["Recebido", "Em preparo"].includes(p.status)).length;
+  const clientesHoje = new Set(pedidosHoje.map((p) => p.telefone || p.nome)).size;
+
+  const vendasUltimos7Dias = useMemo(() => {
+    return Array.from({ length: 7 }, (_, index) => {
+      const dia = new Date(agora);
+      dia.setHours(0, 0, 0, 0);
+      dia.setDate(dia.getDate() - (6 - index));
+      const chave = dia.toLocaleDateString("pt-BR");
+      const total = pedidosValidos
+        .filter((p) => new Date(p.criadoEm).toLocaleDateString("pt-BR") === chave)
+        .reduce((s, p) => s + p.total, 0);
+      return {
+        dia: dia.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+        vendas: Number(total.toFixed(2)),
+      };
+    });
+  }, [pedidosValidos, agora]);
+
+  const vendasSemanaAtual = vendasUltimos7Dias.reduce((s, d) => s + d.vendas, 0);
+
+  const vendasSemanaAnterior = useMemo(() => {
+    return Array.from({ length: 7 }, (_, index) => {
+      const dia = new Date(agora);
+      dia.setHours(0, 0, 0, 0);
+      dia.setDate(dia.getDate() - (13 - index));
+      const chave = dia.toLocaleDateString("pt-BR");
+      return pedidosValidos
+        .filter((p) => new Date(p.criadoEm).toLocaleDateString("pt-BR") === chave)
+        .reduce((s, p) => s + p.total, 0);
+    }).reduce((s, v) => s + v, 0);
+  }, [pedidosValidos, agora]);
+
+  const crescimentoSemana = vendasSemanaAnterior > 0
+    ? ((vendasSemanaAtual - vendasSemanaAnterior) / vendasSemanaAnterior) * 100
+    : vendasSemanaAtual > 0 ? 100 : 0;
+
+  const statusData = useMemo(() => {
+    const nomes = ["Recebido", "Em preparo", "Pronto", "Saiu para entrega", "Concluído", "Cancelado"];
+    return nomes.map((status) => ({
+      name: status === "Concluído" ? "Entregue" : status,
+      value: pedidosHoje.filter((p) => p.status === status).length,
+    })).filter((item) => item.value > 0);
+  }, [pedidosHoje]);
+
+  const pagamentoData = useMemo(() => {
+    const mapa = new Map<string, number>();
+    pedidosHoje.forEach((p) => mapa.set(p.pagamento || "Não informado", (mapa.get(p.pagamento || "Não informado") || 0) + p.total));
+    return Array.from(mapa.entries())
+      .map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }))
+      .sort((a, b) => b.value - a.value);
+  }, [pedidosHoje]);
+
+  const produtosMaisVendidos = useMemo(() => {
+    const mapa = new Map<string, { nome: string; quantidade: number; receita: number }>();
+    const janela = pedidosValidos.filter((p) => {
+      const diff = agora.getTime() - new Date(p.criadoEm).getTime();
+      return diff >= 0 && diff <= 7 * 24 * 60 * 60 * 1000;
+    });
+    janela.forEach((p) => p.itens.forEach((item) => {
+      const atual = mapa.get(item.nome) || { nome: item.nome, quantidade: 0, receita: 0 };
+      atual.quantidade += item.quantidade;
+      atual.receita += item.quantidade * item.preco;
+      mapa.set(item.nome, atual);
+    }));
+    return Array.from(mapa.values()).sort((a, b) => b.quantidade - a.quantidade).slice(0, 5);
+  }, [pedidosValidos, agora]);
+
+  const categoriasData = useMemo(() => {
+    const mapa = new Map<string, number>();
+    const janela = pedidosValidos.filter((p) => {
+      const diff = agora.getTime() - new Date(p.criadoEm).getTime();
+      return diff >= 0 && diff <= 7 * 24 * 60 * 60 * 1000;
+    });
+    janela.forEach((p) => p.itens.forEach((item) => {
+      const categoria = produtos.find((produto) => produto.id === item.id || produto.nome === item.nome)?.categoria || "Outros";
+      mapa.set(categoria, (mapa.get(categoria) || 0) + item.quantidade * item.preco);
+    }));
+    return Array.from(mapa.entries())
+      .map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+  }, [pedidosValidos, produtos, agora]);
+
+  const coresGrafico = ["#ffc400", "#36a3ff", "#9b5cff", "#35d07f", "#ff5b5b", "#8b94a7"];
+  const formatarPercentual = (valor: number, total: number) => total ? Math.round((valor / total) * 100) + "%" : "0%";
   const filtrados = useMemo(() => produtos.filter(p => (p.nome+" "+p.descricao+" "+p.categoria).toLowerCase().includes(busca.toLowerCase())), [produtos,busca]);
 
   if (!autenticado) return <Login onLogged={() => { setAutenticado(true); carregar(); }} />;
@@ -204,8 +276,102 @@ function Dashboard() {
         {novoPedidoAviso&&<div className="mb-3 flex items-center justify-between rounded-xl border border-[#ffc400]/30 bg-[#ffc400]/10 px-4 py-3 text-sm text-[#ffc400]"><span>🔔 {novoPedidoAviso}</span><button onClick={()=>setNovoPedidoAviso("")}><X className="size-4"/></button></div>}
         {mensagem&&<div className="mb-5 flex items-center justify-between rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-300"><span><Check className="mr-2 inline size-4"/>{mensagem}</span><button onClick={()=>setMensagem("")}><X className="size-4"/></button></div>}
         {erro&&<div className="mb-5 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{erro}</div>}
-        {aba==="visao"&&<section className="space-y-6"><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[["Vendas de hoje",dinheiro(vendasHoje),"Receita no banco"],["Pedidos hoje",String(pedidosHoje.length),"Pedidos recebidos"],["Itens vendidos",String(itensVendidos),"Itens registrados"],["Itens no cardápio",String(produtos.length),"Produtos ativos"]].map(([l,v,d])=><article key={l} className="rounded-2xl border border-white/10 bg-[#141617] p-5"><div className="flex items-center justify-between"><p className="text-sm text-white/55">{l}</p><span className="grid size-9 place-items-center rounded-xl bg-[#ffc400]/10 text-[#ffc400]"><BarChart3 className="size-5"/></span></div><p className="mt-5 text-3xl font-black">{v}</p><p className="mt-1 text-xs text-white/35">{d}</p></article>)}</div><section className="rounded-2xl border border-white/10 bg-[#141617] p-5"><div className="flex items-center justify-between"><div><h2 className="font-black">Pedidos recentes</h2><p className="mt-1 text-xs text-white/35">Atualização automática via Realtime.</p></div><button onClick={()=>setAba("pedidos")} className="text-sm font-bold text-[#ffc400]">Ver todos</button></div>{pedidos.slice(0,8).map(p=><button key={p.numero} onClick={()=>{setPedidoSelecionado(p);setAba("pedidos")}} className="mt-3 flex w-full items-center justify-between rounded-xl border border-white/10 p-4 text-left hover:border-[#ffc400]/30"><div><p className="text-xs text-white/35">#{p.numero} • {p.nome}</p><p className="mt-1 font-bold">{p.itens.map(i=>`${i.quantidade}x ${i.nome}`).join(", ")}</p></div><div className="text-right"><b className="text-[#ffc400]">{dinheiro(p.total)}</b><p className="mt-1 text-[10px] text-emerald-300">{p.status}</p></div></button>)}{!pedidos.length&&<div className="py-16 text-center text-sm text-white/30">Nenhum pedido registrado.</div>}</section></section>}
-        {aba==="pedidos"&&<section className="space-y-4"><div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#141617] px-4"><Search className="size-4 text-white/30"/><input value={busca} onChange={e=>setBusca(e.target.value)} className="min-h-11 flex-1 bg-transparent text-sm outline-none" placeholder="Buscar pedido ou cliente..."/></div><div className="overflow-hidden rounded-2xl border border-white/10 bg-[#141617]">{pedidos.filter(p=>(p.numero+" "+p.nome+" "+p.telefone).toLowerCase().includes(busca.toLowerCase())).map(p=><div key={p.numero} className="grid gap-3 border-b border-white/10 p-5 last:border-0 md:grid-cols-[1fr_1.4fr_.7fr_.8fr] md:items-center"><div><p className="text-xs text-white/35">Pedido</p><b>#{p.numero}</b><p className="text-xs text-white/35">{new Date(p.criadoEm).toLocaleString("pt-BR")}</p></div><div><b>{p.nome}</b><p className="text-xs text-white/40">{p.telefone} • {p.entrega}</p></div><b className="text-[#ffc400]">{dinheiro(p.total)}</b><select value={p.status} onChange={e=>status(p.numero,e.target.value)} className="min-h-10 rounded-lg border border-white/10 bg-[#0d0e0f] px-2 text-xs font-bold">{statusOptions.filter((x) => x !== "Saiu para entrega" || p.entrega === "Entrega").map(x=><option key={x}>{x}</option>)}</select><button onClick={()=>setPedidoSelecionado(p)} className="text-left text-xs font-bold text-[#ffc400] md:col-span-4">Ver detalhes →</button></div>)}{!pedidos.length&&<div className="py-16 text-center text-white/30">Nenhum pedido registrado.</div>}</div></section>}
+        {aba==="visao"&&<section className="space-y-5">
+          <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-[#111416] p-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="grid size-11 place-items-center rounded-2xl bg-[#ffc400] text-2xl">👋</div>
+              <div><p className="text-2xl font-black">Olá, administrador!</p><p className="mt-1 text-sm text-white/45">Aqui está o resumo da operação do Lilhão hoje.</p></div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {["Hoje", "7 dias", "30 dias", "Este mês"].map((periodo, index) => (
+                <button key={periodo} className={index === 0 ? "rounded-xl border border-[#ffc400] bg-[#ffc400] px-4 py-2.5 text-xs font-bold text-black" : "rounded-xl border border-white/10 bg-white/[.03] px-4 py-2.5 text-xs font-bold text-white/60 hover:border-white/20"}>{periodo}</button>
+              ))}
+              <button className="rounded-xl border border-white/10 bg-white/[.03] px-4 py-2.5 text-xs font-bold text-white/60"><CalendarDays className="mr-1 inline size-4"/> Personalizado</button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            {[
+              ["Vendas hoje", dinheiro(vendasHoje), "↑ " + Math.abs(crescimentoSemana).toFixed(1) + "%", CircleDollarSign, "text-[#ffc400]"],
+              ["Pedidos hoje", String(pedidosHoje.length), pedidosPendentes ? String(pedidosPendentes) + " pendentes" : "Sem pendências", ShoppingCart, "text-[#36a3ff]"],
+              ["Ticket médio", dinheiro(ticketMedio), "por pedido", TrendingUp, "text-[#9b5cff]"],
+              ["Itens vendidos", String(itensVendidos), "pedidos registrados", BarChart3, "text-[#35d07f]"],
+              ["Produtos ativos", String(produtos.length), "no cardápio", Package, "text-[#ff9d2e]"],
+              ["Clientes hoje", String(clientesHoje), "clientes identificados", Users, "text-[#ff5b78]"],
+            ].map(([label, value, detalhe, Icon, cor]) => (
+              <article key={String(label)} className="rounded-2xl border border-white/10 bg-[#141617] p-4 shadow-[0_12px_30px_rgba(0,0,0,.12)]">
+                <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold text-white/50">{label}</p><span className={"grid size-9 place-items-center rounded-xl bg-white/[.04] " + String(cor)}><Icon className="size-5"/></span></div>
+                <p className="mt-4 text-2xl font-black tracking-tight">{value}</p><p className="mt-1 text-[11px] text-emerald-300">{detalhe}</p>
+              </article>
+            ))}
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-[1.45fr_.8fr_.8fr]">
+            <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
+              <div className="flex items-start justify-between gap-4"><div><p className="text-sm font-black">Vendas dos últimos 7 dias</p><div className="mt-1 flex items-end gap-3"><b className="text-2xl">{dinheiro(vendasSemanaAtual)}</b><span className="mb-1 text-xs font-bold text-emerald-300">↑ {Math.abs(crescimentoSemana).toFixed(1)}%</span></div></div><span className="rounded-lg border border-white/10 px-3 py-1.5 text-[10px] font-bold text-white/50">Vendas (R$)</span></div>
+              <div className="mt-4 h-[230px] w-full">
+                <ResponsiveContainer width="100%" height="100%"><AreaChart data={vendasUltimos7Dias}>
+                  <defs><linearGradient id="lilhaoSalesGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ffc400" stopOpacity={0.35}/><stop offset="100%" stopColor="#ffc400" stopOpacity={0}/></linearGradient></defs>
+                  <CartesianGrid stroke="#ffffff10" vertical={false}/><XAxis dataKey="dia" stroke="#ffffff45" tickLine={false} axisLine={false} fontSize={10}/><YAxis stroke="#ffffff45" tickLine={false} axisLine={false} fontSize={10} tickFormatter={(v) => "R$" + v}/><Tooltip contentStyle={{background:"#101314",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"#fff"}} formatter={(value: number) => [dinheiro(value), "Vendas"]}/><Area type="monotone" dataKey="vendas" stroke="#ffc400" strokeWidth={3} fill="url(#lilhaoSalesGradient)" dot={{r:3,fill:"#ffc400",strokeWidth:0}}/>
+                </AreaChart></ResponsiveContainer>
+              </div>
+            </article>
+
+            <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
+              <div className="flex items-center justify-between"><div><p className="text-sm font-black">Pedidos por status</p><p className="mt-1 text-[11px] text-white/35">Hoje</p></div><ClipboardList className="size-5 text-[#ffc400]"/></div>
+              <div className="mt-2 h-[220px]">{statusData.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={statusData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={80} paddingAngle={3}>{statusData.map((_, i) => <Cell key={i} fill={coresGrafico[i % coresGrafico.length]}/>)}</Pie><Tooltip contentStyle={{background:"#101314",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"#fff"}}/></PieChart></ResponsiveContainer> : <div className="grid h-full place-items-center text-sm text-white/30">Nenhum pedido hoje.</div>}</div>
+              <div className="grid grid-cols-2 gap-2">{statusData.slice(0,6).map((item, i) => <div key={item.name} className="flex items-center gap-2 text-[11px] text-white/55"><span className="size-2.5 rounded-full" style={{background:coresGrafico[i % coresGrafico.length]}}/>{item.name}<b className="ml-auto text-white/75">{item.value}</b></div>)}</div>
+            </article>
+
+            <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
+              <div className="flex items-center justify-between"><div><p className="text-sm font-black">Formas de pagamento</p><p className="mt-1 text-[11px] text-white/35">Hoje</p></div><CircleDollarSign className="size-5 text-[#ffc400]"/></div>
+              <div className="mt-2 h-[220px]">{pagamentoData.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={pagamentoData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={78} paddingAngle={3}>{pagamentoData.map((_, i) => <Cell key={i} fill={coresGrafico[i % coresGrafico.length]}/>)}</Pie><Tooltip contentStyle={{background:"#101314",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"#fff"}} formatter={(value: number) => [dinheiro(value), "Total"]}/></PieChart></ResponsiveContainer> : <div className="grid h-full place-items-center text-sm text-white/30">Nenhum pagamento hoje.</div>}</div>
+              <div className="space-y-2">{pagamentoData.slice(0,4).map((item, i) => <div key={item.name} className="flex items-center gap-2 text-[11px]"><span className="size-2.5 rounded-full" style={{background:coresGrafico[i % coresGrafico.length]}}/><span className="text-white/55">{item.name}</span><b className="ml-auto">{formatarPercentual(item.value, vendasHoje)}</b></div>)}</div>
+            </article>
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-[1.2fr_.8fr_.8fr]">
+            <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
+              <div className="flex items-center justify-between"><div><h2 className="font-black">Pedidos em andamento</h2><p className="mt-1 text-xs text-white/35">{pedidosPendentes} aguardando ação</p></div><button onClick={()=>setAba("pedidos")} className="text-xs font-bold text-[#ffc400]">Ver todos →</button></div>
+              <div className="mt-4 space-y-2">{pedidosHoje.filter((p) => !["Concluído","Cancelado"].includes(p.status)).slice(0,4).map((p) => <button key={p.numero} onClick={()=>{setPedidoSelecionado(p);setAba("pedidos")}} className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-black/10 p-3 text-left hover:border-[#ffc400]/30"><span className={"grid size-10 shrink-0 place-items-center rounded-xl " + (p.status==="Recebido"?"bg-red-400/15 text-red-300":p.status==="Em preparo"?"bg-yellow-400/15 text-yellow-300":"bg-emerald-400/15 text-emerald-300")}><ShoppingCart className="size-4"/></span><span className="min-w-0 flex-1"><b className="block truncate text-sm">#{p.numero}</b><span className="block truncate text-[11px] text-white/40">{p.nome} • {p.itens.reduce((s,i)=>s+i.quantidade,0)} itens • {dinheiro(p.total)}</span></span><span className="rounded-full bg-white/[.06] px-2 py-1 text-[10px] font-bold">{p.status === "Concluído" ? "Entregue" : p.status}</span><span className="text-xs text-white/30">→</span></button>)}{!pedidosHoje.filter((p) => !["Concluído","Cancelado"].includes(p.status)).length && <div className="py-12 text-center text-sm text-white/30"><Check className="mx-auto mb-2 size-7 text-emerald-400"/>Nenhum pedido aguardando.</div>}</div>
+            </article>
+
+            <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
+              <div className="flex items-center justify-between"><div><h2 className="font-black">Produtos mais vendidos</h2><p className="mt-1 text-xs text-white/35">Últimos 7 dias</p></div><TrendingUp className="size-5 text-[#ffc400]"/></div>
+              <div className="mt-4 space-y-2">{produtosMaisVendidos.map((item, i) => <div key={item.nome} className="flex items-center gap-3 rounded-xl bg-black/15 p-2.5"><span className={"grid size-7 shrink-0 place-items-center rounded-lg text-xs font-black " + (i===0?"bg-[#ffc400] text-black":"bg-white/[.06] text-white/70")}>{i+1}</span><span className="min-w-0 flex-1"><b className="block truncate text-xs">{item.nome}</b><small className="text-[10px] text-white/35">{item.quantidade} vendidos</small></span><b className="text-xs text-[#ffc400]">{dinheiro(item.receita)}</b></div>)}{!produtosMaisVendidos.length && <div className="py-12 text-center text-sm text-white/30">Ainda não há vendas suficientes.</div>}</div>
+            </article>
+
+            <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
+              <div className="flex items-center justify-between"><div><h2 className="font-black">Vendas por categoria</h2><p className="mt-1 text-xs text-white/35">Últimos 7 dias</p></div><BarChart3 className="size-5 text-[#ffc400]"/></div>
+              <div className="mt-4 space-y-4">{categoriasData.map((item, i) => { const max = categoriasData[0]?.value || 1; return <div key={item.name}><div className="mb-1 flex items-center justify-between gap-3 text-xs"><span className="truncate text-white/60">{item.name}</span><b>{dinheiro(item.value)}</b></div><div className="h-2 overflow-hidden rounded-full bg-white/[.06]"><div className="h-full rounded-full" style={{width:Math.max(4,(item.value/max)*100)+"%",background:coresGrafico[i % coresGrafico.length]}}/></div></div>; })}{!categoriasData.length && <div className="py-12 text-center text-sm text-white/30">Sem dados de categoria.</div>}</div>
+            </article>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-3">
+            <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
+              <div className="flex items-center justify-between"><div><h2 className="font-black">Faturamento por dia</h2><p className="mt-1 text-xs text-white/35">Últimos 7 dias</p></div><BarChart3 className="size-5 text-[#ffc400]"/></div>
+              <div className="mt-4 h-[190px]"><ResponsiveContainer width="100%" height="100%"><BarChart data={vendasUltimos7Dias}><CartesianGrid stroke="#ffffff10" vertical={false}/><XAxis dataKey="dia" stroke="#ffffff45" tickLine={false} axisLine={false} fontSize={9}/><YAxis stroke="#ffffff45" tickLine={false} axisLine={false} fontSize={9} tickFormatter={(v)=>"R$"+v}/><Tooltip contentStyle={{background:"#101314",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"#fff"}} formatter={(value: number) => [dinheiro(value), "Vendas"]}/><Bar dataKey="vendas" radius={[6,6,0,0]} fill="#ffc400"/></BarChart></ResponsiveContainer></div>
+            </article>
+
+            <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
+              <div className="flex items-center justify-between"><div><h2 className="font-black">Comparativo de vendas</h2><p className="mt-1 text-xs text-white/35">7 dias atuais x anteriores</p></div><span className="font-black text-emerald-300">↑ {Math.abs(crescimentoSemana).toFixed(1)}%</span></div>
+              <div className="mt-7 space-y-5">
+                <div><div className="mb-2 flex justify-between text-xs"><span className="text-white/55">Período atual</span><b>{dinheiro(vendasSemanaAtual)}</b></div><div className="h-3 overflow-hidden rounded-full bg-white/[.06]"><div className="h-full rounded-full bg-[#ffc400]" style={{width:(vendasSemanaAtual / Math.max(vendasSemanaAtual, vendasSemanaAnterior, 1))*100+"%"}}/></div></div>
+                <div><div className="mb-2 flex justify-between text-xs"><span className="text-white/55">Período anterior</span><b>{dinheiro(vendasSemanaAnterior)}</b></div><div className="h-3 overflow-hidden rounded-full bg-white/[.06]"><div className="h-full rounded-full bg-white/30" style={{width:(vendasSemanaAnterior / Math.max(vendasSemanaAtual, vendasSemanaAnterior, 1))*100+"%"}}/></div></div>
+              </div>
+            </article>
+
+            <article className="rounded-2xl border border-white/10 bg-[#141617] p-5">
+              <div className="flex items-center justify-between"><div><h2 className="font-black">Informações da loja</h2><p className="mt-1 text-xs text-white/35">Configuração operacional</p></div><Store className="size-5 text-[#ffc400]"/></div>
+              <div className="mt-4 space-y-3 text-xs">
+                <div className="flex items-center gap-3"><Clock3 className="size-4 text-white/35"/><span className="text-white/45">Horário</span><b className="ml-auto">{config.horario_abertura || "18:00"} – {config.horario_fechamento || "23:30"}</b></div>
+                <div className="flex items-center gap-3"><Truck className="size-4 text-white/35"/><span className="text-white/45">Taxa de entrega</span><b className="ml-auto">{dinheiro(Number(config.taxa_entrega) || 0)}</b></div>
+                <div className="flex items-center gap-3"><CircleDollarSign className="size-4 text-white/35"/><span className="text-white/45">Pedido mínimo</span><b className="ml-auto">{Number(config.pedido_minimo)>0 ? dinheiro(Number(config.pedido_minimo)) : "Sem mínimo"}</b></div>
+                <div className="flex items-center gap-3"><Users className="size-4 text-white/35"/><span className="text-white/45">Clientes hoje</span><b className="ml-auto">{clientesHoje}</b></div>
+              </div>
+            </article>
+          </div>
+        </section>{aba==="pedidos"&&<section className="space-y-4"><div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#141617] px-4"><Search className="size-4 text-white/30"/><input value={busca} onChange={e=>setBusca(e.target.value)} className="min-h-11 flex-1 bg-transparent text-sm outline-none" placeholder="Buscar pedido ou cliente..."/></div><div className="overflow-hidden rounded-2xl border border-white/10 bg-[#141617]">{pedidos.filter(p=>(p.numero+" "+p.nome+" "+p.telefone).toLowerCase().includes(busca.toLowerCase())).map(p=><div key={p.numero} className="grid gap-3 border-b border-white/10 p-5 last:border-0 md:grid-cols-[1fr_1.4fr_.7fr_.8fr] md:items-center"><div><p className="text-xs text-white/35">Pedido</p><b>#{p.numero}</b><p className="text-xs text-white/35">{new Date(p.criadoEm).toLocaleString("pt-BR")}</p></div><div><b>{p.nome}</b><p className="text-xs text-white/40">{p.telefone} • {p.entrega}</p></div><b className="text-[#ffc400]">{dinheiro(p.total)}</b><select value={p.status} onChange={e=>status(p.numero,e.target.value)} className="min-h-10 rounded-lg border border-white/10 bg-[#0d0e0f] px-2 text-xs font-bold">{statusOptions.filter((x) => x !== "Saiu para entrega" || p.entrega === "Entrega").map(x=><option key={x}>{x}</option>)}</select><button onClick={()=>setPedidoSelecionado(p)} className="text-left text-xs font-bold text-[#ffc400] md:col-span-4">Ver detalhes →</button></div>)}{!pedidos.length&&<div className="py-16 text-center text-white/30">Nenhum pedido registrado.</div>}</div></section>}
         {aba==="cardapio"&&<section className="space-y-4"><div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#141617] px-4"><Search className="size-4 text-white/30"/><input value={busca} onChange={e=>setBusca(e.target.value)} className="min-h-11 flex-1 bg-transparent text-sm outline-none" placeholder="Buscar produto..."/></div><div className="grid gap-3 lg:grid-cols-2">{filtrados.map(p=><article key={p.id} className="flex items-center gap-4 rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="size-20 shrink-0 overflow-hidden rounded-xl bg-black">{p.imagem?<img src={p.imagem} alt="" className="h-full w-full object-cover"/>:<div className="grid h-full place-items-center text-2xl">🍔</div>}</div><div className="min-w-0 flex-1"><p className="text-xs text-[#ffc400]">{p.categoria}</p><h3 className="font-black">{p.nome}</h3><p className="mt-1 line-clamp-1 text-xs text-white/40">{p.descricao}</p><b className="mt-2 block text-[#ffc400]">{dinheiro(p.preco)}</b></div><button onClick={()=>setProdutoEditando(p)} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-bold">Editar</button><button onClick={()=>excluir(p.id)} className="grid size-9 place-items-center rounded-lg border border-red-400/15 text-red-300"><X className="size-4"/></button></article>)}</div></section>}
         {aba==="categorias"&&<section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{categorias.filter(c=>c!=="Todos").map(cat=><article key={cat} className="rounded-2xl border border-white/10 bg-[#141617] p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-white/35">Categoria</p><h2 className="mt-1 font-black">{cat}</h2></div><span className="grid size-10 place-items-center rounded-xl bg-[#ffc400]/10 text-[#ffc400]"><Utensils className="size-5"/></span></div><p className="mt-4 text-sm text-white/45">{produtos.filter(p=>p.categoria===cat).length} produtos ativos</p></article>)}</section>}
         {aba==="configuracoes"&&<section className="space-y-5">
