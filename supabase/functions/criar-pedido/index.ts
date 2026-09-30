@@ -227,6 +227,15 @@ Deno.serve(async (req: Request) => {
 
     const idempotencyKey = typeof body.idempotency_key === "string" ? body.idempotency_key.trim() : "";
 
+    if (body.pagamento === "PIX" && Deno.env.get("MERCADOPAGO_PIX_ENABLED") !== "true") {
+      return new Response(JSON.stringify({
+        error: "Pagamento PIX ainda não está habilitado para a produção."
+      }), {
+        status: 403,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+
     const { data, error } = await admin.rpc("criar_pedido", {
       p_nome: body.nome,
       p_telefone: verifiedPhone || body.telefone,
