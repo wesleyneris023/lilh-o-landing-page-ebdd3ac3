@@ -196,6 +196,29 @@ export async function sairCliente() {
   if (error) throw error;
 }
 
+export async function consultarStatusPagamentoPix(numero: string) {
+  const response = await fetch(ORDER_FUNCTION_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || "",
+    },
+    body: JSON.stringify({
+      acao: "consultar_pagamento",
+      numero,
+      cliente_token: obterTokenCliente(),
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body?.error || "Não foi possível verificar o pagamento.");
+  return body as {
+    numero: string;
+    pagamento_status: "pendente" | "aprovado" | "recusado" | "cancelado";
+    mercadopago_order_id: string | null;
+    mercadopago_payment_id: string | null;
+  };
+}
+
 export async function carregarPedidosCliente(): Promise<Pedido[]> {
   const { data: { session } } = await supabase.auth.getSession();
 
