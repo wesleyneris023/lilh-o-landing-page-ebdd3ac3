@@ -68,6 +68,7 @@ export async function criarPedidoReal(input: {
   observacao: string;
   itens: Array<{ id: string; quantidade: number }>;
   idempotency_key: string;
+  email?: string;
 }) {
   const { data: { session } } = await supabase.auth.getSession();
   const cliente_token = obterTokenCliente();
@@ -85,7 +86,25 @@ export async function criarPedidoReal(input: {
   if (typeof window !== "undefined" && typeof body?.cliente_token === "string" && body.cliente_token.length >= 32) {
     window.localStorage.setItem(CLIENTE_TOKEN_KEY, body.cliente_token);
   }
-  return body as { id: string; numero: string; subtotal: number; taxa_entrega: number; total: number; status: string; pagamento_status: string; cliente_token: string };
+  return body as {
+    id: string;
+    numero: string;
+    subtotal: number;
+    taxa_entrega: number;
+    total: number;
+    status: string;
+    pagamento_status: string;
+    cliente_token: string;
+    pix?: {
+      order_id: string;
+      payment_id: string | null;
+      status: string;
+      status_detail: string;
+      qr_code: string;
+      qr_code_base64: string;
+      ticket_url: string;
+    };
+  };
 }
 
 function mapPedido(row: any): Pedido {
