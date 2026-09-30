@@ -18,18 +18,6 @@ function categoriaIcone(cat: string) {
   }
 }
 
-function FakeQrCode() {
-  const cells = Array.from({ length: 29 * 29 }, (_, index) => {
-    const x = index % 29;
-    const y = Math.floor(index / 29);
-    const finder = (ox: number, oy: number) => x >= ox && x < ox + 7 && y >= oy && y < oy + 7 && (x === ox || x === ox + 6 || y === oy || y === oy + 6 || (x >= ox + 2 && x <= ox + 4 && y >= oy + 2 && y <= oy + 4));
-    const timing = (x === 6 && y > 7 && y < 21) || (y === 6 && x > 7 && x < 21);
-    const noise = ((x * 17 + y * 31 + x * y * 7) % 11) < 5;
-    return finder(0, 0) || finder(22, 0) || finder(0, 22) || timing || noise;
-  });
-  return <svg viewBox="0 0 29 29" className="size-full rounded-xl bg-white p-3" role="img" aria-label="QR Code demonstrativo do PIX">{cells.map((on, i) => on ? <rect key={i} x={i % 29} y={Math.floor(i / 29)} width="1" height="1" fill="#050505" /> : null)}</svg>;
-}
-
 function Index() {
   const [categoria, setCategoria] = useState("Todos");
   const [busca, setBusca] = useState("");
