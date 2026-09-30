@@ -59,6 +59,8 @@ function obterTokenCliente() {
   return token;
 }
 
+const PIX_ENABLED = import.meta.env.VITE_LILHAO_PIX_ENABLED === "true";
+
 export async function criarPedidoReal(input: {
   nome: string;
   telefone: string;
@@ -70,6 +72,9 @@ export async function criarPedidoReal(input: {
   idempotency_key: string;
   email?: string;
 }) {
+  if (input.pagamento === "PIX" && !PIX_ENABLED) {
+    throw new Error("Pagamento PIX não está disponível neste ambiente.");
+  }
   const { data: { session } } = await supabase.auth.getSession();
   const cliente_token = obterTokenCliente();
   const response = await fetch(ORDER_FUNCTION_URL, {
@@ -316,7 +321,8 @@ export async function excluirProdutoDb(id: string) {
 export async function carregarFormasPagamento() {
   const { data, error } = await supabase.from("formas_pagamento").select("nome").eq("ativo", true).order("ordem", { ascending: true });
   if (error) throw error;
-  return (data || []).map((item) => item.nome);
+  const nomes = (data || []).map((item) => item.nome);
+  return PIX_ENABLED ? nomes : nomes.filter((nome) => nome !== "PIX");
 }
 
 export async function carregarConfiguracoes() {
