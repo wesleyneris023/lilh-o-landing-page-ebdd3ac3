@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Clock, Copy,
 import heroBurger from "@/assets/hero-burger.jpg";
 
 import { categorias, dinheiro, lerProdutos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
-import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente, carregarClienteAtual, enviarCodigoTelefone, confirmarCodigoTelefone, sincronizarClienteAtual, sairCliente } from "@/lib/api";
+import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente, consultarStatusPagamentoPix, carregarClienteAtual, enviarCodigoTelefone, confirmarCodigoTelefone, sincronizarClienteAtual, sairCliente } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 function categoriaIcone(cat: string) {
   switch (cat) {
@@ -362,14 +362,8 @@ function Index() {
     setVerificandoPix(true);
     setErroCheckout("");
     try {
-      const { data, error } = await supabase
-        .from("pedidos")
-        .select("pagamento_status")
-        .eq("numero", pedidoAtual.numero)
-        .eq("pagamento", "PIX")
-        .maybeSingle();
-      if (error) throw error;
-      const status = (data?.pagamento_status || "pendente") as typeof pixStatus;
+      const resultado = await consultarStatusPagamentoPix(pedidoAtual.numero);
+      const status = resultado.pagamento_status as typeof pixStatus;
       setPixStatus(status);
       if (status === "aprovado") {
         setSacola([]);
@@ -377,6 +371,8 @@ function Index() {
         setCheckoutEtapa(5);
       } else if (status === "recusado" || status === "cancelado") {
         setErroCheckout("O pagamento PIX não foi aprovado. Você pode voltar e tentar novamente.");
+      } else {
+        setErroCheckout("O pagamento ainda está pendente. Se você já pagou, aguarde alguns segundos e verifique novamente.");
       }
     } catch (error) {
       setErroCheckout(error instanceof Error ? error.message : "Não foi possível verificar o pagamento agora.");
@@ -427,7 +423,7 @@ function Index() {
         <div className="grid grid-cols-[.8fr_1.2fr] gap-3"><button onClick={() => setCheckoutEtapa(1)} className={quietClass}>Voltar</button><button onClick={continuarPagamento} disabled={!pagamento} className={actionClass}>Continuar <ArrowRight className="ml-1 inline size-4"/></button></div>
       </section>}
 
-      {checkoutEtapa === 3 && <section className="space-y-4 py-5"><p className="text-sm text-white/50">Confira as informações antes de confirmar.</p><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex items-center justify-between"><h2 className="font-black">Cliente</h2><button onClick={() => setCheckoutEtapa(1)} className="text-sm font-bold text-[#ffc400]">Editar</button></div><p className="mt-2">{nome}</p><p className="text-sm text-white/50">{telefone}</p><p className="mt-3 text-sm text-white/70">{tipoEntrega === "retirada" ? "Retirada no local" : `${rua}, ${numero} — ${bairro}${complemento ? `, ${complemento}` : ""}`}</p>{referencia && tipoEntrega === "entrega" && <p className="text-xs text-white/40">Referência: {referencia}</p>}</div><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex items-center justify-between"><h2 className="font-black">Pagamento</h2><button onClick={() => setCheckoutEtapa(2)} className="text-sm font-bold text-[#ffc400]">Editar</button></div><p className="mt-2">{pagamento}{pagamento === "Dinheiro" && troco ? ` • Troco para ${troco}` : ""}</p></div><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><h2 className="font-black">Resumo do pedido</h2><div className="mt-3 space-y-3">{sacola.map(item => <div key={item.id} className="flex justify-between gap-3 text-sm"><span className="text-white/70">{item.quantidade}x {item.nome}</span><b>{dinheiro(item.preco * item.quantidade)}</b></div>)}</div><div className="mt-4 space-y-2 border-t border-white/10 pt-3 text-sm"><div className="flex justify-between text-white/50"><span>Subtotal</span><span>{dinheiro(subtotal)}</span></div><div className="flex justify-between text-white/50"><span>Taxa de entrega</span><span>{taxaEntrega ? dinheiro(taxaEntrega) : "Grátis"}</span></div><div className="flex justify-between border-t border-white/10 pt-3 text-base font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(total)}</span></div></div>{observacao && <p className="mt-3 text-xs text-white/45">Observação: {observacao}</p>}</div><div className="grid grid-cols-[.8fr_1.2fr] gap-3"><button onClick={() => setCheckoutEtapa(2)} className={quietClass}>Voltar</button><button onClick={() => confirmarPedido()} disabled={enviandoPedido} className={actionClass}>{enviandoPedido ? "Preparando..." : pagamento === "PIX" ? "Gerar PIX" : "Confirmar pedido"} <Check className="ml-1 inline size-4"/></button></div><p className="text-center text-[11px] text-white/35">O pedido é enviado e persistido no Supabase. O PIX permanece em modo demonstração até a integração com um provedor real.</p></section>}
+      {checkoutEtapa === 3 && <section className="space-y-4 py-5"><p className="text-sm text-white/50">Confira as informações antes de confirmar.</p><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex items-center justify-between"><h2 className="font-black">Cliente</h2><button onClick={() => setCheckoutEtapa(1)} className="text-sm font-bold text-[#ffc400]">Editar</button></div><p className="mt-2">{nome}</p><p className="text-sm text-white/50">{telefone}</p><p className="mt-3 text-sm text-white/70">{tipoEntrega === "retirada" ? "Retirada no local" : `${rua}, ${numero} — ${bairro}${complemento ? `, ${complemento}` : ""}`}</p>{referencia && tipoEntrega === "entrega" && <p className="text-xs text-white/40">Referência: {referencia}</p>}</div><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex items-center justify-between"><h2 className="font-black">Pagamento</h2><button onClick={() => setCheckoutEtapa(2)} className="text-sm font-bold text-[#ffc400]">Editar</button></div><p className="mt-2">{pagamento}{pagamento === "Dinheiro" && troco ? ` • Troco para ${troco}` : ""}</p></div><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><h2 className="font-black">Resumo do pedido</h2><div className="mt-3 space-y-3">{sacola.map(item => <div key={item.id} className="flex justify-between gap-3 text-sm"><span className="text-white/70">{item.quantidade}x {item.nome}</span><b>{dinheiro(item.preco * item.quantidade)}</b></div>)}</div><div className="mt-4 space-y-2 border-t border-white/10 pt-3 text-sm"><div className="flex justify-between text-white/50"><span>Subtotal</span><span>{dinheiro(subtotal)}</span></div><div className="flex justify-between text-white/50"><span>Taxa de entrega</span><span>{taxaEntrega ? dinheiro(taxaEntrega) : "Grátis"}</span></div><div className="flex justify-between border-t border-white/10 pt-3 text-base font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(total)}</span></div></div>{observacao && <p className="mt-3 text-xs text-white/45">Observação: {observacao}</p>}</div><div className="grid grid-cols-[.8fr_1.2fr] gap-3"><button onClick={() => setCheckoutEtapa(2)} className={quietClass}>Voltar</button><button onClick={() => confirmarPedido()} disabled={enviandoPedido} className={actionClass}>{enviandoPedido ? "Preparando..." : pagamento === "PIX" ? "Gerar PIX" : "Confirmar pedido"} <Check className="ml-1 inline size-4"/></button></div><p className="text-center text-[11px] text-white/35">O pedido é enviado com segurança. No PIX, o pagamento é processado pelo Mercado Pago e a confirmação chega pelo Webhook.</p></section>}
 
       {checkoutEtapa === 4 && pixData && <section className="space-y-6 py-8">
         <div className="text-center">
