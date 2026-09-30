@@ -13,6 +13,80 @@ async function sha256Hex(value: string) {
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+function validarEmail(value: unknown) {
+  const email = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error("Informe um e-mail válido para pagar com PIX.");
+  }
+  return email;
+}
+
+function primeiroNome(nome: string) {
+  return nome.trim().split(/\s+/)[0]?.slice(0, 60) || "Cliente";
+}
+
+async function criarOrderPixMercadoPago(args: {
+  accessToken: string;
+  total: number;
+  numero: string;
+  email: string;
+  nome: string;
+  idempotencyKey: string;
+}) {
+  const response = await fetch("https://api.mercadopago.com/v1/orders", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${args.accessToken}`,
+      "X-Idempotency-Key": args.idempotencyKey,
+    },
+    body: JSON.stringify({
+      type: "online",
+      total_amount: args.total.toFixed(2),
+      external_reference: args.numero,
+      processing_mode: "automatic",
+      payer: {
+        email: args.email,
+        first_name: primeiroNome(args.nome),
+      },
+      transactions: {
+        payments: [
+          {
+            amount: args.total.toFixed(2),
+            payment_method: {
+              id: "pix",
+              type: "bank_transfer",
+            },
+            expiration_time: "PT24H",
+          },
+        ],
+      },
+    }),
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = result?.message || result?.error || result?.cause?.[0]?.description || "Não foi possível criar a cobrança PIX.";
+    throw new Error(`Mercado Pago: ${detail}`);
+  }
+
+  const payment = result?.transactions?.payments?.[0];
+  const paymentMethod = payment?.payment_method;
+  if (!result?.id || !paymentMethod?.qr_code) {
+    throw new Error("Mercado Pago não retornou os dados do PIX.");
+  }
+
+  return {
+    order_id: String(result.id),
+    payment_id: payment?.id ? String(payment.id) : null,
+    status: result?.status ?? "action_required",
+    status_detail: result?.status_detail ?? "waiting_transfer",
+    qr_code: String(paymentMethod.qr_code),
+    qr_code_base64: paymentMethod.qr_code_base64 ? String(paymentMethod.qr_code_base64) : "",
+    ticket_url: paymentMethod.ticket_url ? String(paymentMethod.ticket_url) : "",
+  };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") {
@@ -121,6 +195,8 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const idempotencyKey = typeof body.idempotency_key === "string" ? body.idempotency_key.trim() : "";
+
     const { data, error } = await admin.rpc("criar_pedido", {
       p_nome: body.nome,
       p_telefone: verifiedPhone || body.telefone,
@@ -131,10 +207,50 @@ Deno.serve(async (req: Request) => {
       p_itens: body.itens ?? [],
       p_cliente_token: body.cliente_token,
       p_auth_user_id: authUserId,
-      p_idempotency_key: typeof body.idempotency_key === "string" ? body.idempotency_key.trim() : "",
+      p_idempotency_key: idempotencyKey,
     });
 
     if (error) throw error;
+
+    if (body.pagamento === "PIX") {
+      const mercadoPagoToken = Deno.env.get("MERCADOPAGO_ACCESS_TOKEN");
+      if (!mercadoPagoToken) throw new Error("Credencial do Mercado Pago não configurada.");
+
+      const email = validarEmail(body.email);
+      const pix = await criarOrderPixMercadoPago({
+        accessToken: mercadoPagoToken,
+        total: Number(data.total),
+        numero: String(data.numero),
+        email,
+        nome: String(body.nome ?? ""),
+        idempotencyKey,
+      });
+
+      const { error: pixPersistError } = await admin
+        .from("pedidos")
+        .update({
+          mercadopago_order_id: pix.order_id,
+          mercadopago_payment_id: pix.payment_id,
+          pix_qr_code: pix.qr_code,
+          pix_qr_code_base64: pix.qr_code_base64 || null,
+          pix_ticket_url: pix.ticket_url || null,
+          pagamento_status: "pendente",
+          atualizado_em: new Date().toISOString(),
+        })
+        .eq("numero", String(data.numero))
+        .eq("pagamento", "PIX");
+
+      if (pixPersistError) throw pixPersistError;
+
+      return new Response(JSON.stringify({
+        ...data,
+        pagamento_status: "pendente",
+        pix,
+      }), {
+        status: 200,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
 
     return new Response(JSON.stringify(data), {
       status: 200,
