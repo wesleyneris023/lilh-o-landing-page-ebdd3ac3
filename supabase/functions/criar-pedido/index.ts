@@ -161,6 +161,36 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (body?.acao === "consultar_pagamento") {
+      const token = typeof body?.cliente_token === "string" ? body.cliente_token.trim() : "";
+      const numero = typeof body?.numero === "string" ? body.numero.trim() : "";
+      if (token.length < 32 || !numero) {
+        return new Response(JSON.stringify({ pagamento_status: "pendente" }), {
+          status: 200,
+          headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
+      const tokenHash = await sha256Hex(token);
+      const { data: pedidoPagamento, error: pagamentoError } = await admin
+        .from("pedidos")
+        .select("numero,pagamento,pagamento_status,mercadopago_order_id,mercadopago_payment_id")
+        .eq("cliente_token_hash", tokenHash)
+        .eq("numero", numero)
+        .eq("pagamento", "PIX")
+        .maybeSingle();
+      if (pagamentoError) throw pagamentoError;
+
+      return new Response(JSON.stringify({
+        numero: pedidoPagamento?.numero ?? numero,
+        pagamento_status: pedidoPagamento?.pagamento_status ?? "pendente",
+        mercadopago_order_id: pedidoPagamento?.mercadopago_order_id ?? null,
+        mercadopago_payment_id: pedidoPagamento?.mercadopago_payment_id ?? null,
+      }), {
+        status: 200,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+
     if (body?.acao === "consultar") {
       const token = typeof body?.cliente_token === "string" ? body.cliente_token.trim() : "";
       if (token.length < 32) {
