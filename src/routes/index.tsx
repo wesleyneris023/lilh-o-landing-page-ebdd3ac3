@@ -4,9 +4,8 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Clock, Copy,
 import heroBurger from "@/assets/hero-burger.jpg";
 
 import { categorias, dinheiro, lerProdutos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
-import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente, carregarClienteAtual, enviarCodigoTelefone, confirmarCodigoTelefone, sincronizarClienteAtual, sairCliente } from "@/lib/api";
+import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente, consultarStatusPagamentoPix, carregarClienteAtual, enviarCodigoTelefone, confirmarCodigoTelefone, sincronizarClienteAtual, sairCliente } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
-const PIX_CODIGO_DEMO = "00020126580014BR.GOV.BCB.PIX0136lilhao-demo-pagamento-nao-real-5204000053039865406";
 function categoriaIcone(cat: string) {
   switch (cat) {
     case "Todos": return LayoutDashboard;
@@ -19,18 +18,6 @@ function categoriaIcone(cat: string) {
   }
 }
 
-function FakeQrCode() {
-  const cells = Array.from({ length: 29 * 29 }, (_, index) => {
-    const x = index % 29;
-    const y = Math.floor(index / 29);
-    const finder = (ox: number, oy: number) => x >= ox && x < ox + 7 && y >= oy && y < oy + 7 && (x === ox || x === ox + 6 || y === oy || y === oy + 6 || (x >= ox + 2 && x <= ox + 4 && y >= oy + 2 && y <= oy + 4));
-    const timing = (x === 6 && y > 7 && y < 21) || (y === 6 && x > 7 && x < 21);
-    const noise = ((x * 17 + y * 31 + x * y * 7) % 11) < 5;
-    return finder(0, 0) || finder(22, 0) || finder(0, 22) || timing || noise;
-  });
-  return <svg viewBox="0 0 29 29" className="size-full rounded-xl bg-white p-3" role="img" aria-label="QR Code demonstrativo do PIX">{cells.map((on, i) => on ? <rect key={i} x={i % 29} y={Math.floor(i / 29)} width="1" height="1" fill="#050505" /> : null)}</svg>;
-}
-
 function Index() {
   const [categoria, setCategoria] = useState("Todos");
   const [busca, setBusca] = useState("");
@@ -40,6 +27,7 @@ function Index() {
   const [checkoutEtapa, setCheckoutEtapa] = useState(0);
   const [nome, setNome] = useState("");
   const [telefone, setTelefone] = useState("");
+  const [email, setEmail] = useState("");
   const [tipoEntrega, setTipoEntrega] = useState<"entrega" | "retirada">("entrega");
   const [cep, setCep] = useState("");
   const [rua, setRua] = useState("");
@@ -55,7 +43,17 @@ function Index() {
   const [aba, setAba] = useState<"inicio" | "pedidos" | "conta">("inicio");
   const [menu, setMenu] = useState<Produto[]>(lerProdutos());
   const [categoriasMenu, setCategoriasMenu] = useState<string[]>(categorias);
-  const [pixPago, setPixPago] = useState(false);
+  const [pixData, setPixData] = useState<{
+    order_id: string;
+    payment_id: string | null;
+    status: string;
+    status_detail: string;
+    qr_code: string;
+    qr_code_base64: string;
+    ticket_url: string;
+  } | null>(null);
+  const [pixStatus, setPixStatus] = useState<"pendente" | "aprovado" | "recusado" | "cancelado">("pendente");
+  const [verificandoPix, setVerificandoPix] = useState(false);
   const [carregandoMenu, setCarregandoMenu] = useState(true);
   const [erroMenu, setErroMenu] = useState("");
   const [enviandoPedido, setEnviandoPedido] = useState(false);
@@ -297,13 +295,17 @@ function Index() {
   }
   function continuarEntrega() { if (!nome.trim() || !telefone.trim() || (tipoEntrega === "entrega" && (!rua.trim() || !numero.trim() || !bairro.trim()))) return; setCheckoutEtapa(2); }
   function continuarPagamento() { if (!pagamento) return; setCheckoutEtapa(3); }
-  async function confirmarPedido(pixConfirmado = pixPago) {
-    if (pagamento === "PIX" && !pixConfirmado) return;
+  async function confirmarPedido() {
     if (!sacola.length || enviandoPedido) return;
     setErroCheckout("");
     setEnviandoPedido(true);
     const idempotencyKey = pedidoIdempotencyKey || crypto.randomUUID();
     if (!pedidoIdempotencyKey) setPedidoIdempotencyKey(idempotencyKey);
+    if (pagamento === "PIX" && !email.trim()) {
+      setErroCheckout("Informe um e-mail válido para gerar o PIX.");
+      setEnviandoPedido(false);
+      return;
+    }
     const enderecoTexto = tipoEntrega === "retirada"
       ? "Retirada no local"
       : rua + ", " + numero + " — " + bairro + (complemento ? ", " + complemento : "") + (referencia ? " (Ref.: " + referencia + ")" : "");
@@ -311,6 +313,7 @@ function Index() {
       const criado = await criarPedidoReal({
         nome,
         telefone,
+        email: email.trim(),
         tipo_entrega: tipoEntrega,
         endereco: { cep, rua, numero, bairro, complemento, referencia, texto: enderecoTexto },
         pagamento,
@@ -335,14 +338,46 @@ function Index() {
       };
       setPedidos((atual) => [novo, ...atual]);
       setPedidoAtual(novo);
+
+      if (pagamento === "PIX") {
+        if (!criado.pix?.qr_code) throw new Error("O Mercado Pago não retornou o código PIX.");
+        setPixData(criado.pix);
+        setPixStatus("pendente");
+        setCheckoutEtapa(4);
+        return;
+      }
+
       setSacola([]);
-      setPixPago(false);
       setPedidoIdempotencyKey("");
       setCheckoutEtapa(5);
     } catch (error) {
       setErroCheckout(error instanceof Error ? error.message : "Não foi possível enviar o pedido. Tente novamente.");
     } finally {
       setEnviandoPedido(false);
+    }
+  }
+
+  async function verificarPagamentoPix() {
+    if (!pedidoAtual || verificandoPix) return;
+    setVerificandoPix(true);
+    setErroCheckout("");
+    try {
+      const resultado = await consultarStatusPagamentoPix(pedidoAtual.numero);
+      const status = resultado.pagamento_status as typeof pixStatus;
+      setPixStatus(status);
+      if (status === "aprovado") {
+        setSacola([]);
+        setPedidoIdempotencyKey("");
+        setCheckoutEtapa(5);
+      } else if (status === "recusado" || status === "cancelado") {
+        setErroCheckout("O pagamento PIX não foi aprovado. Você pode voltar e tentar novamente.");
+      } else {
+        setErroCheckout("O pagamento ainda está pendente. Se você já pagou, aguarde alguns segundos e verifique novamente.");
+      }
+    } catch (error) {
+      setErroCheckout(error instanceof Error ? error.message : "Não foi possível verificar o pagamento agora.");
+    } finally {
+      setVerificandoPix(false);
     }
   }
   async function abrirMeusPedidos() {
@@ -355,7 +390,8 @@ function Index() {
     setAba("pedidos");
     setCheckoutEtapa(0);
     setSacolaAberta(false);
-    setPixPago(false);
+    setPixData(null);
+    setPixStatus("pendente");
   }
 
   const inputClass = "mt-1.5 min-h-12 w-full rounded-xl border border-white/10 bg-[#101112] px-4 text-base text-white outline-none placeholder:text-white/30 focus:border-[#ffc400]";
@@ -381,19 +417,35 @@ function Index() {
 
       {checkoutEtapa === 2 && <section className="space-y-5 py-5"><div><h2 className="text-lg font-black">Forma de pagamento</h2><p className="mt-1 text-sm text-white/45">Selecione como deseja pagar.</p></div><div className="space-y-3">{formasPagamento.map(nome => { const desc = nome === "PIX" ? "Pagamento via PIX" : nome === "Crédito" ? "Cartão de crédito na entrega" : nome === "Débito" ? "Cartão de débito na entrega" : "Pague ao receber ou retirar"; return { nome, desc }; }).map(op => <button key={op.nome} onClick={() => setPagamento(op.nome)} className={`flex min-h-[76px] w-full items-center gap-4 rounded-2xl border p-4 text-left ${pagamento === op.nome ? "border-[#ffc400] bg-[#ffc400]/10" : "border-white/10 bg-[#141617]"}`}><span className={`grid size-11 place-items-center rounded-xl ${pagamento === op.nome ? "bg-[#ffc400] text-black" : "bg-white/5 text-[#ffc400]"}`}><CreditCard className="size-5"/></span><span className="flex-1"><b>{op.nome}</b><small className="mt-1 block text-white/45">{op.desc}</small></span>{op.nome === "PIX" && <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-300">Popular</span>}<span className={`size-5 rounded-full border-2 ${pagamento === op.nome ? "border-[#ffc400] bg-[#ffc400] shadow-[inset_0_0_0_4px_#111]" : "border-white/25"}`}/></button>)}</div>
         {pagamento === "Dinheiro" && <label className="block text-xs font-bold text-white/60">Precisa de troco? Para quanto?<input value={troco} onChange={e => setTroco(e.target.value)} className={inputClass} placeholder="Ex.: R$ 50,00 (opcional)"/></label>}
+        {pagamento === "PIX" && <label className="block text-xs font-bold text-white/60">E-mail para o pagamento PIX *<input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputClass} placeholder="voce@exemplo.com" autoComplete="email"/></label>}
         <label className="block text-xs font-bold text-white/60">Observação do pedido (opcional)<textarea value={observacao} onChange={e => setObservacao(e.target.value)} className={`${inputClass} min-h-24 py-3`} placeholder="Alguma informação para a lanchonete?"/></label>
         <div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex justify-between text-sm text-white/50"><span>Subtotal</span><span>{dinheiro(subtotal)}</span></div><div className="mt-2 flex justify-between text-sm text-white/50"><span>Entrega</span><span>{taxaEntrega ? dinheiro(taxaEntrega) : "Grátis"}</span></div><div className="mt-3 flex justify-between border-t border-white/10 pt-3 font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(total)}</span></div></div>
         <div className="grid grid-cols-[.8fr_1.2fr] gap-3"><button onClick={() => setCheckoutEtapa(1)} className={quietClass}>Voltar</button><button onClick={continuarPagamento} disabled={!pagamento} className={actionClass}>Continuar <ArrowRight className="ml-1 inline size-4"/></button></div>
       </section>}
 
-      {checkoutEtapa === 3 && <section className="space-y-4 py-5"><p className="text-sm text-white/50">Confira as informações antes de confirmar.</p><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex items-center justify-between"><h2 className="font-black">Cliente</h2><button onClick={() => setCheckoutEtapa(1)} className="text-sm font-bold text-[#ffc400]">Editar</button></div><p className="mt-2">{nome}</p><p className="text-sm text-white/50">{telefone}</p><p className="mt-3 text-sm text-white/70">{tipoEntrega === "retirada" ? "Retirada no local" : `${rua}, ${numero} — ${bairro}${complemento ? `, ${complemento}` : ""}`}</p>{referencia && tipoEntrega === "entrega" && <p className="text-xs text-white/40">Referência: {referencia}</p>}</div><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex items-center justify-between"><h2 className="font-black">Pagamento</h2><button onClick={() => setCheckoutEtapa(2)} className="text-sm font-bold text-[#ffc400]">Editar</button></div><p className="mt-2">{pagamento}{pagamento === "Dinheiro" && troco ? ` • Troco para ${troco}` : ""}</p></div><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><h2 className="font-black">Resumo do pedido</h2><div className="mt-3 space-y-3">{sacola.map(item => <div key={item.id} className="flex justify-between gap-3 text-sm"><span className="text-white/70">{item.quantidade}x {item.nome}</span><b>{dinheiro(item.preco * item.quantidade)}</b></div>)}</div><div className="mt-4 space-y-2 border-t border-white/10 pt-3 text-sm"><div className="flex justify-between text-white/50"><span>Subtotal</span><span>{dinheiro(subtotal)}</span></div><div className="flex justify-between text-white/50"><span>Taxa de entrega</span><span>{taxaEntrega ? dinheiro(taxaEntrega) : "Grátis"}</span></div><div className="flex justify-between border-t border-white/10 pt-3 text-base font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(total)}</span></div></div>{observacao && <p className="mt-3 text-xs text-white/45">Observação: {observacao}</p>}</div><div className="grid grid-cols-[.8fr_1.2fr] gap-3"><button onClick={() => setCheckoutEtapa(2)} className={quietClass}>Voltar</button><button onClick={() => pagamento === "PIX" ? setCheckoutEtapa(4) : confirmarPedido()} disabled={enviandoPedido} className={actionClass}>{pagamento === "PIX" ? "Pagar com PIX" : "Confirmar pedido"} <Check className="ml-1 inline size-4"/></button></div><p className="text-center text-[11px] text-white/35">O pedido é enviado e persistido no Supabase. O PIX permanece em modo demonstração até a integração com um provedor real.</p></section>}
+      {checkoutEtapa === 3 && <section className="space-y-4 py-5"><p className="text-sm text-white/50">Confira as informações antes de confirmar.</p><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex items-center justify-between"><h2 className="font-black">Cliente</h2><button onClick={() => setCheckoutEtapa(1)} className="text-sm font-bold text-[#ffc400]">Editar</button></div><p className="mt-2">{nome}</p><p className="text-sm text-white/50">{telefone}</p><p className="mt-3 text-sm text-white/70">{tipoEntrega === "retirada" ? "Retirada no local" : `${rua}, ${numero} — ${bairro}${complemento ? `, ${complemento}` : ""}`}</p>{referencia && tipoEntrega === "entrega" && <p className="text-xs text-white/40">Referência: {referencia}</p>}</div><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex items-center justify-between"><h2 className="font-black">Pagamento</h2><button onClick={() => setCheckoutEtapa(2)} className="text-sm font-bold text-[#ffc400]">Editar</button></div><p className="mt-2">{pagamento}{pagamento === "Dinheiro" && troco ? ` • Troco para ${troco}` : ""}</p></div><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><h2 className="font-black">Resumo do pedido</h2><div className="mt-3 space-y-3">{sacola.map(item => <div key={item.id} className="flex justify-between gap-3 text-sm"><span className="text-white/70">{item.quantidade}x {item.nome}</span><b>{dinheiro(item.preco * item.quantidade)}</b></div>)}</div><div className="mt-4 space-y-2 border-t border-white/10 pt-3 text-sm"><div className="flex justify-between text-white/50"><span>Subtotal</span><span>{dinheiro(subtotal)}</span></div><div className="flex justify-between text-white/50"><span>Taxa de entrega</span><span>{taxaEntrega ? dinheiro(taxaEntrega) : "Grátis"}</span></div><div className="flex justify-between border-t border-white/10 pt-3 text-base font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(total)}</span></div></div>{observacao && <p className="mt-3 text-xs text-white/45">Observação: {observacao}</p>}</div><div className="grid grid-cols-[.8fr_1.2fr] gap-3"><button onClick={() => setCheckoutEtapa(2)} className={quietClass}>Voltar</button><button onClick={() => confirmarPedido()} disabled={enviandoPedido} className={actionClass}>{enviandoPedido ? "Preparando..." : pagamento === "PIX" ? "Gerar PIX" : "Confirmar pedido"} <Check className="ml-1 inline size-4"/></button></div><p className="text-center text-[11px] text-white/35">O pedido é enviado com segurança. No PIX, o pagamento é processado pelo Mercado Pago e a confirmação chega pelo Webhook.</p></section>}
 
-      {checkoutEtapa === 4 && <section className="space-y-6 py-8">
-        <div className="text-center"><div className="mx-auto grid size-16 place-items-center rounded-full bg-[#ffc400]/10 text-[#ffc400]"><QrCode className="size-8"/></div><p className="mt-4 text-xs font-black uppercase tracking-[.2em] text-[#ffc400]">Pagamento via PIX</p><h2 className="mt-2 text-3xl font-black">Escaneie para pagar</h2><p className="mt-2 text-sm text-white/45">Este QR Code é apenas demonstrativo e não movimenta dinheiro.</p><p className="mt-4 text-4xl font-black text-[#ffc400]">{dinheiro(total)}</p></div>
-        <div className="mx-auto w-full max-w-sm rounded-3xl border border-white/10 bg-white p-4 shadow-2xl"><FakeQrCode /></div>
-        <div className="mx-auto max-w-sm text-center"><p className="text-xs text-white/40">Ou copie o código PIX de demonstração</p><button onClick={() => navigator.clipboard?.writeText(PIX_CODIGO_DEMO)} className="mt-3 min-h-12 w-full rounded-xl bg-[#ffc400] px-4 font-black text-black"><Copy className="mr-2 inline size-4"/>Copiar código PIX</button><p className="mt-4 text-sm font-bold text-amber-300">Aguardando pagamento…</p><button onClick={() => { setPixPago(true); confirmarPedido(true); }} className="mt-5 w-full rounded-xl border border-white/10 bg-white/[.04] py-3 text-sm font-bold text-white/70">Simular pagamento confirmado</button><div className="mt-4 rounded-2xl border border-white/10 bg-[#141617] p-4 text-left text-xs leading-relaxed text-white/45"><b className="text-white">Ambiente de demonstração</b><br/>O pedido só será registrado depois que o pagamento PIX for simulado. Na versão real, esta etapa será ligada ao provedor PIX.</div></div>
+      {checkoutEtapa === 4 && pixData && <section className="space-y-6 py-8">
+        <div className="text-center">
+          <div className="mx-auto grid size-16 place-items-center rounded-full bg-[#ffc400]/10 text-[#ffc400]"><QrCode className="size-8"/></div>
+          <p className="mt-4 text-xs font-black uppercase tracking-[.2em] text-[#ffc400]">Pagamento via PIX</p>
+          <h2 className="mt-2 text-3xl font-black">Escaneie para pagar</h2>
+          <p className="mt-2 text-sm text-white/45">Use o QR Code abaixo ou copie e cole o código no seu banco.</p>
+          <p className="mt-4 text-4xl font-black text-[#ffc400]">{dinheiro(pedidoAtual?.total ?? total)}</p>
+        </div>
+        {pixData.qr_code_base64 ? <div className="mx-auto w-full max-w-sm rounded-3xl border border-white/10 bg-white p-4 shadow-2xl"><img src={`data:image/png;base64,${pixData.qr_code_base64}`} alt="QR Code PIX" className="mx-auto aspect-square w-full rounded-xl object-contain"/></div> : <div className="mx-auto max-w-sm rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4 text-center text-sm text-amber-200">O Mercado Pago não retornou a imagem do QR Code. Use o botão de pagamento abaixo.</div>}
+        <div className="mx-auto max-w-sm text-center">
+          <p className="text-xs text-white/40">PIX Copia e Cola</p>
+          <button onClick={() => navigator.clipboard?.writeText(pixData.qr_code)} className="mt-3 min-h-12 w-full rounded-xl bg-[#ffc400] px-4 font-black text-black"><Copy className="mr-2 inline size-4"/>Copiar código PIX</button>
+          {pixData.ticket_url && <a href={pixData.ticket_url} target="_blank" rel="noreferrer" className="mt-3 block min-h-12 rounded-xl border border-white/10 bg-white/[.04] px-4 py-3 font-bold text-white">Abrir pagamento PIX</a>}
+          <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-4 text-left">
+            <p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">Status do pagamento</p>
+            <p className="mt-2 font-black">{pixStatus === "aprovado" ? "Pagamento aprovado" : pixStatus === "recusado" ? "Pagamento recusado" : pixStatus === "cancelado" ? "Pagamento cancelado" : "Aguardando pagamento..."}</p>
+            <p className="mt-1 text-xs text-white/45">Após pagar, toque em verificar pagamento. A confirmação chega automaticamente pelo Mercado Pago.</p>
+          </div>
+          <button onClick={verificarPagamentoPix} disabled={verificandoPix} className={`${actionClass} mt-4 w-full`}>{verificandoPix ? "Verificando..." : "Já paguei • verificar pagamento"}</button>
+        </div>
       </section>}
-
       {checkoutEtapa === 5 && pedidoAtual && <section className="py-10 text-center"><div className="mx-auto grid size-20 place-items-center rounded-full bg-emerald-400/15 text-emerald-400"><CheckCircle2 className="size-11"/></div><p className="mt-5 text-xs font-black uppercase tracking-[.2em] text-[#ffc400]">Tudo certo, {pedidoAtual.nome.split(" ")[0]}!</p><h2 className="mt-2 text-3xl font-black">Pedido registrado</h2><p className="mt-2 text-sm text-white/50">Seu número de pedido</p><p className="mt-1 text-4xl font-black text-[#ffc400]">#{pedidoAtual.numero}</p><div className="mx-auto mt-6 max-w-md rounded-2xl border border-white/10 bg-[#141617] p-4 text-left"><div className="flex items-center gap-3"><PackageCheck className="size-6 text-[#ffc400]"/><div><b>Status: {pedidoAtual.status}</b><p className="text-xs text-white/45">Pedido recebido pelo sistema da Lilhão</p></div></div><div className="mt-4 border-t border-white/10 pt-3 text-sm"><div className="flex justify-between"><span className="text-white/50">Entrega</span><span>{pedidoAtual.entrega}</span></div><div className="mt-2 flex justify-between"><span className="text-white/50">Pagamento</span><span>{pedidoAtual.pagamento}</span></div><div className="mt-2 flex justify-between font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(pedidoAtual.total)}</span></div></div></div><p className="mx-auto mt-4 max-w-md text-xs leading-relaxed text-white/40">Seu pedido foi registrado com segurança e já está disponível para atendimento no sistema da Lilhão.</p><div className="mx-auto mt-6 grid max-w-md gap-3"><button onClick={abrirMeusPedidos} className={actionClass}>Acompanhar / ver meus pedidos</button><button onClick={() => { setCheckoutEtapa(0); setPedidoAtual(null); setAba("inicio"); }} className={quietClass}>Voltar ao cardápio</button></div></section>}
     </main> : <>
       {aba === "inicio" && <main><section id="inicio" className="relative isolate flex min-h-[420px] items-center justify-center overflow-hidden border-b border-white/10 bg-black text-center sm:min-h-[520px]"><img src={heroBurger} alt="" className="absolute inset-0 -z-20 h-full w-full object-cover"/><div className="absolute inset-0 -z-10 bg-gradient-to-b from-black/65 via-black/50 to-[#080909]"/><div className="relative mx-auto flex w-full max-w-5xl flex-col items-center px-5 py-16"><p className="mb-4 text-[11px] font-black uppercase tracking-[.2em] text-white/90 sm:text-sm">Hambúrgueres • Pizzas • Refeições • Sorvetes</p><p className="text-xl font-black uppercase">Lanchonete do</p><h1 className="mt-1 text-7xl font-black uppercase leading-[.9] tracking-tight text-[#ffc400] sm:text-9xl">Lilhão<span className="text-white">.</span></h1><p className="mt-4 text-sm font-bold uppercase tracking-wide">Sabor que vira tradição!</p><a href="#cardapio" className="mt-7 inline-flex min-h-12 items-center justify-center gap-3 rounded-full bg-[#ffc400] px-9 font-black text-black">Ver cardápio ↓</a></div></section>
