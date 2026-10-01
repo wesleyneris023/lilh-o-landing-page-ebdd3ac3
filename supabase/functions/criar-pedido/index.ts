@@ -252,6 +252,36 @@ Deno.serve(async (req: Request) => {
     if (error) throw error;
 
     if (body.pagamento === "PIX") {
+      // Idempotent retry: reuse the PIX already created for this order.
+      if (data?.idempotente === true) {
+        const { data: existingPix, error: existingPixError } = await admin
+          .from("pedidos")
+          .select("mercadopago_order_id,mercadopago_payment_id,pix_qr_code,pix_qr_code_base64,pix_ticket_url,pagamento_status")
+          .eq("numero", String(data.numero))
+          .eq("pagamento", "PIX")
+          .maybeSingle();
+
+        if (existingPixError) throw existingPixError;
+        if (existingPix?.mercadopago_order_id && existingPix?.pix_qr_code) {
+          return new Response(JSON.stringify({
+            ...data,
+            pagamento_status: existingPix.pagamento_status ?? "pendente",
+            pix: {
+              order_id: String(existingPix.mercadopago_order_id),
+              payment_id: existingPix.mercadopago_payment_id ? String(existingPix.mercadopago_payment_id) : null,
+              status: existingPix.pagamento_status ?? "pendente",
+              status_detail: "existing",
+              qr_code: String(existingPix.pix_qr_code),
+              qr_code_base64: existingPix.pix_qr_code_base64 ? String(existingPix.pix_qr_code_base64) : "",
+              ticket_url: existingPix.pix_ticket_url ? String(existingPix.pix_ticket_url) : "",
+            },
+          }), {
+            status: 200,
+            headers: { ...cors, "Content-Type": "application/json" },
+          });
+        }
+      }
+
       const mercadoPagoToken = Deno.env.get("MERCADOPAGO_ACCESS_TOKEN");
       if (!mercadoPagoToken) throw new Error("Credencial do Mercado Pago não configurada.");
 
