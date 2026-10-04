@@ -451,7 +451,7 @@ function Dashboard() {
               </article>
               <article className="rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-5">
                 <h2 className="font-black">Segurança e operação</h2>
-                <ul className="mt-4 space-y-3 text-sm text-white/55"><li>✓ Supabase conectado</li><li>✓ Autenticação administrativa</li><li>✓ RLS ativo</li><li>✓ Pedidos persistidos no banco</li><li>✓ Atualização em tempo real</li><li>✓ PIX desativado até integração com provedor real</li></ul>
+                <ul className="mt-4 space-y-3 text-sm text-white/55"><li>✓ Supabase conectado</li><li>✓ Autenticação administrativa</li><li>✓ RLS ativo</li><li>✓ Pedidos persistidos no banco</li><li>✓ Atualização em tempo real</li><li>✓ PIX integrado via Mercado Pago</li></ul>
               </article>
             </aside>
           </div>
