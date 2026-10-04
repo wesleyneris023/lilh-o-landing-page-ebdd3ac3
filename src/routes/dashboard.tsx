@@ -532,4 +532,10 @@ function Dashboard() {
   </div>;
 }
 
-export const Route = createFileRoute("/dashboard")({ component: Dashboard });
+export const Route = createFileRoute("/dashboard")({
+  // O painel administrativo depende de Supabase Auth, APIs do navegador e Realtime.
+  // Não há benefício de SEO aqui; manter esta rota client-only evita falhas de SSR
+  // na primeira abertura direta do painel e deixa a autenticação acontecer no browser.
+  ssr: false,
+  component: Dashboard,
+});
