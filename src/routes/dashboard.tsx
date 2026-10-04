@@ -458,7 +458,7 @@ function Dashboard() {
         </section>}
       </main>
     </div>
-    <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 border-t border-white/10 bg-[#101112]/95 p-2 backdrop-blur-xl md:hidden">{[["visao","Início",LayoutDashboard],["categorias","Categorias",Package],["pedidos","Pedidos",ClipboardList],["configuracoes","Conta",Settings]].map(([id,label,Icon])=><button key={id} onClick={()=>setAba(id as typeof aba)} className={`flex flex-col items-center gap-1 py-1 text-[9px] font-bold ${aba===id?"text-[#ffc400]":"text-white/45"}`}><Icon className="size-5"/>{label}</button>)}</nav>
+    <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 border-t border-white/10 bg-[#101112]/95 p-2 backdrop-blur-xl md:hidden">{[["visao","Início",LayoutDashboard],["categorias","Categorias",Package],["pedidos","Pedidos",ClipboardList],["configuracoes","Config.",Settings]].map(([id,label,Icon])=><button key={id} onClick={()=>setAba(id as typeof aba)} className={`flex flex-col items-center gap-1 py-1 text-[9px] font-bold ${aba===id?"text-[#ffc400]":"text-white/45"}`}><Icon className="size-5"/>{label}</button>)}</nav>
     {produtoEditando && (
       <div
         className="fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 sm:items-center sm:p-4"
