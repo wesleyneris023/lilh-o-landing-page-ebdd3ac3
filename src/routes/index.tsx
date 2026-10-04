@@ -485,4 +485,10 @@ function Index() {
   </div>;
 }
 
-export const Route = createFileRoute("/")({ component: Index });
+export const Route = createFileRoute("/")({
+  // A loja pública é essencialmente client-side (Supabase Auth, catálogo,
+  // checkout e estado local). Evitar SSR aqui impede que uma exceção de
+  // renderização no servidor derrube a página inteira com o erro genérico.
+  ssr: false,
+  component: Index,
+});
