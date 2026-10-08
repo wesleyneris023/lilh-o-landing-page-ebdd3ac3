@@ -292,6 +292,23 @@ function Dashboard() {
     } catch(e) { setErro(e instanceof Error?e.message:"Não foi possível alterar o status da loja."); }
   }
 
+  const lojaAberta = useMemo(() => {
+    if (!config?.aceita_pedidos) return false;
+    const abertura = String(config.horario_abertura || "18:00");
+    const fechamento = String(config.horario_fechamento || "23:30");
+    const [ah, am] = abertura.split(":").map(Number);
+    const [fh, fm] = fechamento.split(":").map(Number);
+    const agoraMin = agora.getHours() * 60 + agora.getMinutes();
+    const aberturaMin = ah * 60 + am;
+    const fechamentoMin = fh * 60 + fm;
+
+    if (aberturaMin === fechamentoMin) return true;
+    if (fechamentoMin > aberturaMin) {
+      return agoraMin >= aberturaMin && agoraMin < fechamentoMin;
+    }
+    return agoraMin >= aberturaMin || agoraMin < fechamentoMin;
+  }, [agora, config]);
+
   return <div className="min-h-screen bg-[#080909] text-white">
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#101112]/95 backdrop-blur-xl"><div className="mx-auto flex max-w-[1500px] items-center justify-between px-4 py-3 sm:px-6"><div className="flex items-center gap-3"><button onClick={()=>window.location.assign("/")} className="grid size-10 place-items-center rounded-full border-2 border-[#ffc400] bg-[#17150d] font-black text-[#ffc400]">L!</button><div><p className="text-lg font-black">Lilhão<span className="text-[#ffc400]">.</span></p><p className="text-[9px] font-bold uppercase tracking-[.2em] text-white/40">Painel administrativo • online</p></div></div><div className="flex items-center gap-2"><span className="hidden rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs font-bold text-emerald-300 sm:inline">Supabase conectado</span><button onClick={()=>supabase.auth.signOut()} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-white/70">Sair</button><button onClick={()=>window.location.assign("/")} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-white/70"><ExternalLink className="mr-1 inline size-4"/> Loja</button></div></div></header>
     <div className="mx-auto flex max-w-[1500px]">
