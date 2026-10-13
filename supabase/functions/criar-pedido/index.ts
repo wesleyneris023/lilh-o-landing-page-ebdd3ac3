@@ -155,6 +155,15 @@ Deno.serve(async (req: Request) => {
         if (linkError) throw linkError;
       }
 
+      // A confirmação por SMS prova o controle do telefone. Associe também
+      // pedidos anteriores de visitante com esse mesmo telefone verificado,
+      // para que o histórico possa ser recuperado em outro dispositivo.
+      const { error: phoneLinkError } = await admin.rpc("vincular_pedidos_cliente_por_telefone", {
+        p_auth_user_id: authUserId,
+        p_telefone: telefone,
+      });
+      if (phoneLinkError) throw phoneLinkError;
+
       return new Response(JSON.stringify({ cliente_id: cliente.id, nome: cliente.nome, telefone: cliente.telefone }), {
         status: 200,
         headers: { ...cors, "Content-Type": "application/json" },
