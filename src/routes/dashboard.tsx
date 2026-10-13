@@ -156,7 +156,7 @@ function Dashboard() {
       dia.setHours(0, 0, 0, 0);
       dia.setDate(dia.getDate() - (6 - index));
       const chave = dia.toLocaleDateString("pt-BR");
-      const total = pedidosValidos
+      const total = pedidosPagos
         .filter((p) => new Date(p.criadoEm).toLocaleDateString("pt-BR") === chave)
         .reduce((s, p) => s + p.total, 0);
       return {
@@ -174,11 +174,11 @@ function Dashboard() {
       dia.setHours(0, 0, 0, 0);
       dia.setDate(dia.getDate() - (13 - index));
       const chave = dia.toLocaleDateString("pt-BR");
-      return pedidosValidos
+      return pedidosPagos
         .filter((p) => new Date(p.criadoEm).toLocaleDateString("pt-BR") === chave)
         .reduce((s, p) => s + p.total, 0);
     }).reduce((s, v) => s + v, 0);
-  }, [pedidosValidos, agora]);
+  }, [pedidosPagos, agora]);
 
   const crescimentoSemana = vendasSemanaAnterior > 0
     ? ((vendasSemanaAtual - vendasSemanaAnterior) / vendasSemanaAnterior) * 100
@@ -233,7 +233,7 @@ function Dashboard() {
       mapa.set(item.nome, atual);
     }));
     return Array.from(mapa.values()).sort((a, b) => b.quantidade - a.quantidade).slice(0, 5);
-  }, [pedidosValidos, agora, periodoDias]);
+  }, [pedidosPagos, agora, periodoDias]);
 
   const categoriasData = useMemo(() => {
     const mapa = new Map<string, number>();
