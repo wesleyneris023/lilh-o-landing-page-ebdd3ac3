@@ -499,9 +499,9 @@ function Index() {
     </>}
 
     {quantidade > 0 && checkoutEtapa === 0 && <button onClick={() => setSacolaAberta(true)} className="fixed bottom-[88px] right-4 z-30 flex min-h-14 items-center gap-3 rounded-full bg-[#ffc400] px-5 font-black text-black shadow-xl md:bottom-6"><ShoppingBag className="size-5"/>Ver sacola • {dinheiro(subtotal)}</button>}
-    {acessoAdmin && checkoutEtapa === 0 && <footer className="mx-auto max-w-7xl px-4 pb-28 pt-8 text-center xl:pb-6">
-      <a href="/dashboard" className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-xs font-medium text-white/35 transition hover:border-[#ffc400]/40 hover:text-[#ffc400]" aria-label="Abrir painel administrativo">
-        <LayoutDashboard className="size-3.5" /> Acesso administrativo
+    {checkoutEtapa === 0 && <footer className="mx-auto max-w-7xl px-4 pb-28 pt-8 text-center xl:pb-6">
+      <a href="/dashboard" className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-xs font-medium text-white/35 transition hover:border-[#ffc400]/40 hover:text-[#ffc400]" aria-label="Abrir área do proprietário">
+        <LayoutDashboard className="size-3.5" /> Área do proprietário
       </a>
     </footer>}
 
