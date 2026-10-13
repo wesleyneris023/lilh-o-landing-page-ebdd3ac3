@@ -140,8 +140,16 @@ function mapPedido(row: any): Pedido {
 
 function normalizarTelefone(telefone: string) {
   const digits = telefone.replace(/\D/g, "");
-  if (digits.startsWith("55")) return `+${digits}`;
-  return `+55${digits}`;
+  // A Brazilian local number can begin with area code 55. Treat it as an
+  // international number only when it already includes country code 55
+  // (12 or 13 digits total); otherwise preserve the local area code.
+  if ((digits.length === 12 || digits.length === 13) && digits.startsWith("55")) {
+    return `+${digits}`;
+  }
+  if (digits.length === 10 || digits.length === 11) {
+    return `+55${digits}`;
+  }
+  throw new Error("Informe um telefone brasileiro válido com DDD.");
 }
 
 export async function carregarClienteAtual(): Promise<{ id: string; nome: string; telefone: string } | null> {
