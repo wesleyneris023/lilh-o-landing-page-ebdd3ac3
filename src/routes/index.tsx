@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Clock, Copy,
 import heroBurger from "@/assets/hero-burger.jpg";
 
 import { categorias, dinheiro, lerProdutos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
-import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente, consultarStatusPagamentoPix, carregarClienteAtual, enviarCodigoTelefone, confirmarCodigoTelefone, sincronizarClienteAtual, sairCliente } from "@/lib/api";
+import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente, consultarStatusPagamentoPix, carregarClienteAtual, enviarCodigoTelefone, confirmarCodigoTelefone, sincronizarClienteAtual, sairCliente, ehAdmin } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 function categoriaIcone(cat: string) {
   switch (cat) {
@@ -75,6 +75,7 @@ function Index() {
   const [contaCarregando, setContaCarregando] = useState(false);
   const [contaErro, setContaErro] = useState("");
   const [sessaoCarregando, setSessaoCarregando] = useState(true);
+  const [acessoAdmin, setAcessoAdmin] = useState(false);
 
   useEffect(() => {
     let ativo = true;
@@ -125,6 +126,26 @@ function Index() {
   useEffect(() => {
     const timer = window.setInterval(() => setAgoraTick(Date.now()), 30000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let ativo = true;
+    const verificarAcessoAdmin = async () => {
+      try {
+        const autorizado = await ehAdmin();
+        if (ativo) setAcessoAdmin(autorizado);
+      } catch {
+        if (ativo) setAcessoAdmin(false);
+      }
+    };
+    void verificarAcessoAdmin();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      window.setTimeout(() => { void verificarAcessoAdmin(); }, 0);
+    });
+    return () => {
+      ativo = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -478,6 +499,12 @@ function Index() {
     </>}
 
     {quantidade > 0 && checkoutEtapa === 0 && <button onClick={() => setSacolaAberta(true)} className="fixed bottom-[88px] right-4 z-30 flex min-h-14 items-center gap-3 rounded-full bg-[#ffc400] px-5 font-black text-black shadow-xl md:bottom-6"><ShoppingBag className="size-5"/>Ver sacola • {dinheiro(subtotal)}</button>}
+    {acessoAdmin && checkoutEtapa === 0 && <footer className="mx-auto max-w-7xl px-4 pb-28 pt-8 text-center xl:pb-6">
+      <a href="/dashboard" className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-xs font-medium text-white/35 transition hover:border-[#ffc400]/40 hover:text-[#ffc400]" aria-label="Abrir painel administrativo">
+        <LayoutDashboard className="size-3.5" /> Acesso administrativo
+      </a>
+    </footer>}
+
     <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-white/10 bg-[#101112]/95 px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-xl xl:hidden"><button onClick={() => {setAba("inicio");setCheckoutEtapa(0);}} className={`flex flex-col items-center gap-1 py-1 text-[10px] font-semibold ${aba === "inicio" ? "text-[#ffc400]" : "text-white/55"}`}><Home className="size-5"/>Início</button><button onClick={() => setCategoriasAbertas(true)} className="flex flex-col items-center gap-1 py-1 text-[10px] font-semibold text-white/55"><Utensils className="size-5"/>Categorias</button><button onClick={abrirMeusPedidos} className={`flex flex-col items-center gap-1 py-1 text-[10px] font-semibold ${aba === "pedidos" ? "text-[#ffc400]" : "text-white/55"}`}><span className="relative"><ClipboardList className="size-5"/>{quantidade > 0 && <span className="absolute -right-3 -top-2 grid min-h-4 min-w-4 place-items-center rounded-full bg-[#ffc400] px-1 text-[9px] font-black text-black">{quantidade}</span>}</span>Pedidos</button><button onClick={() => {setAba("conta");setCheckoutEtapa(0);}} className={`flex flex-col items-center gap-1 py-1 text-[10px] font-semibold ${aba === "conta" ? "text-[#ffc400]" : "text-white/55"}`}><User className="size-5"/>Conta</button></nav>
 
     {categoriasAbertas && <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/75 backdrop-blur-sm" onClick={() => setCategoriasAbertas(false)}><section role="dialog" aria-modal="true" onClick={e=>e.stopPropagation()} className="max-h-[82dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl border border-white/10 bg-[#111314] pb-6"><div className="sticky top-0 flex items-center justify-between border-b border-white/10 bg-[#111314] px-5 py-4"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-[#ffc400]">Explore o cardápio</p><h2 className="mt-1 text-xl font-black">Categorias</h2></div><button onClick={() => setCategoriasAbertas(false)} aria-label="Fechar categorias" className="grid size-10 place-items-center rounded-full border border-white/10"><X className="size-5"/></button></div><div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3">{categoriasMenu.map(item=>{const Icon=categoriaIcone(item);const selected=categoria===item;const count=item==="Todos"?menu.length:menu.filter(p=>p.categoria===item).length;return <button key={item} onClick={()=>{setCategoria(item);setCategoriasAbertas(false);setAba("inicio");document.getElementById("cardapio")?.scrollIntoView({behavior:"smooth"});}} className={`flex min-h-[90px] items-center gap-3 rounded-2xl border p-3 text-left ${selected?"border-[#ffc400] bg-[#ffc400] text-black":"border-white/10 bg-[#191b1c] text-white"}`}><span className={`grid size-10 shrink-0 place-items-center rounded-xl ${selected?"bg-black/10":"bg-[#ffc400]/10 text-[#ffc400]"}`}><Icon className="size-5"/></span><span><b className="block text-sm">{item}</b><small className={`mt-1 block text-[10px] ${selected?"text-black/60":"text-white/40"}`}>{item==="Todos"?"Cardápio completo":`${count} ${count===1?"opção":"opções"}`}</small></span></button>})}</div></section></div>}
