@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Clock, Copy,
 import heroBurger from "@/assets/hero-burger.jpg";
 
 import { categorias, dinheiro, lerProdutos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
-import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente, consultarStatusPagamentoPix, carregarClienteAtual, enviarCodigoEmail, confirmarCodigoEmail, sincronizarClienteAtual, sairCliente, ehAdmin } from "@/lib/api";
+import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente, consultarStatusPagamentoPix, carregarClienteAtual, enviarLinkAcessoEmail, sincronizarClienteAtual, sairCliente, ehAdmin } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 function categoriaIcone(cat: string) {
   switch (cat) {
@@ -72,7 +72,7 @@ function Index() {
   const [contaEmail, setContaEmail] = useState("");
   const [contaNome, setContaNome] = useState("");
   const [contaCodigo, setContaCodigo] = useState("");
-  const [contaEtapa, setContaEtapa] = useState<"dados" | "codigo">("dados");
+  const [contaEtapa, setContaEtapa] = useState<"dados" | "link_enviado">("dados");
   const [contaCarregando, setContaCarregando] = useState(false);
   const [contaErro, setContaErro] = useState("");
   const [sessaoCarregando, setSessaoCarregando] = useState(true);
@@ -155,7 +155,15 @@ function Index() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
-          const perfil = await carregarClienteAtual();
+          let perfil = await carregarClienteAtual();
+          if (!perfil) {
+            const metadata = session.user.user_metadata ?? {};
+            const nomeMeta = typeof metadata.nome === "string" ? metadata.nome : "";
+            const telefoneMeta = typeof metadata.telefone === "string" ? metadata.telefone : "";
+            if (nomeMeta.trim().length >= 2 && telefoneMeta.replace(/\D/g, "").length >= 10) {
+              perfil = await sincronizarClienteAtual(nomeMeta, telefoneMeta);
+            }
+          }
           if (ativo) setCliente(perfil);
         } else if (ativo) {
           setCliente(null);
@@ -175,7 +183,16 @@ function Index() {
       }
       window.setTimeout(async () => {
         try {
-          const perfil = await carregarClienteAtual();
+          let perfil = await carregarClienteAtual();
+          if (!perfil) {
+            const { data: { user } } = await supabase.auth.getUser();
+            const metadata = user?.user_metadata ?? {};
+            const nomeMeta = typeof metadata.nome === "string" ? metadata.nome : "";
+            const telefoneMeta = typeof metadata.telefone === "string" ? metadata.telefone : "";
+            if (nomeMeta.trim().length >= 2 && telefoneMeta.replace(/\D/g, "").length >= 10) {
+              perfil = await sincronizarClienteAtual(nomeMeta, telefoneMeta);
+            }
+          }
           if (ativo) setCliente(perfil);
         } catch {
           if (ativo) setCliente(null);
@@ -247,8 +264,8 @@ function Index() {
     }
     setContaCarregando(true);
     try {
-      await enviarCodigoEmail(contaEmail.trim());
-      setContaEtapa("codigo");
+      await enviarLinkAcessoEmail(contaEmail.trim(), contaNome.trim(), contaTelefone.trim());
+      setContaEtapa("link_enviado");
     } catch (error) {
       setContaErro(error instanceof Error ? error.message : "Não foi possível enviar o código.");
     } finally {
@@ -256,28 +273,6 @@ function Index() {
     }
   }
 
-  async function confirmarCodigoConta() {
-    setContaErro("");
-    if (contaCodigo.replace(/\D/g, "").length !== 6) {
-      setContaErro("Digite o código de 6 dígitos recebido no e-mail.");
-      return;
-    }
-    setContaCarregando(true);
-    try {
-      await confirmarCodigoEmail(contaEmail.trim(), contaCodigo);
-      const perfil = await sincronizarClienteAtual(contaNome, contaTelefone);
-      setCliente(perfil);
-      setContaEtapa("dados");
-      setContaCodigo("");
-      setAba("conta");
-      const lista = await carregarPedidosCliente();
-      setPedidos(lista);
-    } catch (error) {
-      setContaErro(error instanceof Error ? error.message : "Não foi possível confirmar o código.");
-    } finally {
-      setContaCarregando(false);
-    }
-  }
 
   async function sairDaConta() {
     setContaErro("");
@@ -488,19 +483,18 @@ function Index() {
           <div className="rounded-2xl border border-white/10 bg-[#141617] p-5"><p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">Conta verificada</p><h2 className="mt-2 text-2xl font-black">{cliente.nome}</h2><p className="mt-1 text-sm text-white/50">{cliente.telefone}</p><div className="mt-5 grid gap-3 sm:grid-cols-2"><button onClick={abrirMeusPedidos} className={actionClass+" w-full"}>Meus pedidos <ArrowRight className="ml-1 inline size-4"/></button><button onClick={sairDaConta} disabled={contaCarregando} className={quietClass+" w-full"}>Sair da conta</button></div></div>
           <div className="rounded-2xl border border-white/10 bg-[#141617] p-5"><h3 className="font-black">Seus dados</h3><p className="mt-2 text-sm text-white/50">Seus pedidos agora ficam vinculados à sua conta, e não apenas a este navegador.</p></div>
         </div> : <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-5">
-          <p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">Entrar ou criar conta</p><h2 className="mt-2 text-2xl font-black">Acompanhe seus pedidos</h2><p className="mt-2 text-sm leading-relaxed text-white/50">Use seu e-mail para receber um código de acesso. Não precisa criar senha.</p>
+          <p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">Entrar ou criar conta</p><h2 className="mt-2 text-2xl font-black">Acompanhe seus pedidos</h2><p className="mt-2 text-sm leading-relaxed text-white/50">Use seu e-mail para receber um link seguro de acesso. Não precisa criar senha.</p>
           {contaErro && <div className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-200">{contaErro}</div>}
           {contaEtapa === "dados" ? <div className="mt-5 space-y-3">
             <label className="block text-xs font-bold text-white/55">Nome<input value={contaNome} onChange={e=>setContaNome(e.target.value)} placeholder="Seu nome" className={inputClass}/></label>
             <label className="block text-xs font-bold text-white/55">E-mail<input type="email" value={contaEmail} onChange={e=>setContaEmail(e.target.value)} autoComplete="email" placeholder="voce@exemplo.com" className={inputClass}/></label>
             <label className="block text-xs font-bold text-white/55">Celular / WhatsApp<input value={contaTelefone} onChange={e=>setContaTelefone(e.target.value)} inputMode="tel" autoComplete="tel" placeholder="(96) 99999-9999" className={inputClass}/></label>
-            <button onClick={enviarCodigoConta} disabled={contaCarregando} className={actionClass+" w-full"}>{contaCarregando ? "Enviando código..." : "Receber código por e-mail"} <ArrowRight className="ml-1 inline size-4"/></button>
-            <p className="text-center text-[11px] text-white/35">O e-mail confirma seu acesso. O celular ajuda a vincular seus pedidos anteriores.</p>
+            <button onClick={enviarCodigoConta} disabled={contaCarregando} className={actionClass+" w-full"}>{contaCarregando ? "Enviando link..." : "Receber link por e-mail"} <ArrowRight className="ml-1 inline size-4"/></button>
+            <p className="text-center text-[11px] text-white/35">O link confirma seu e-mail; o celular informado ajuda a localizar seus pedidos anteriores.</p>
           </div> : <div className="mt-5 space-y-3">
-            <p className="text-sm text-white/55">Enviamos um código para <strong className="text-white">{contaEmail}</strong>.</p>
-            <label className="block text-xs font-bold text-white/55">Código de 6 dígitos<input value={contaCodigo} onChange={e=>setContaCodigo(e.target.value.replace(/\D/g,"").slice(0,6))} inputMode="numeric" maxLength={6} placeholder="000000" className={inputClass+" text-center text-2xl font-black tracking-[.5em]"}/></label>
-            <button onClick={confirmarCodigoConta} disabled={contaCarregando} className={actionClass+" w-full"}>{contaCarregando ? "Confirmando..." : "Confirmar código"}</button>
-            <button onClick={()=>{setContaEtapa("dados");setContaCodigo("");setContaErro("");}} className={quietClass+" w-full"}>Alterar e-mail ou celular</button>
+            <p className="text-sm text-white/70">Se a solicitação foi aceita, enviamos um link para <strong className="text-white">{contaEmail}</strong>.</p>
+            <p className="text-sm text-white/55">Abra o e-mail e clique em “Entrar no Lilhão”. Use o mesmo navegador para concluir o acesso. Confira também a pasta de spam.</p>
+            <button onClick={()=>{setContaEtapa("dados");setContaErro("");}} className={quietClass+" w-full"}>Voltar</button>
           </div>}
         </div>}
       </main>}
