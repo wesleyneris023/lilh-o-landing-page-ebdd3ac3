@@ -177,8 +177,7 @@ begin
     'cliente_token',v_cliente_token,'cliente_id',v_cliente_id,'idempotente',false
   );
 end;
-$function$
-
+$function$;
 
 CREATE OR REPLACE FUNCTION public.vincular_pedidos_cliente_por_telefone(p_auth_user_id uuid, p_telefone text)
  RETURNS integer
