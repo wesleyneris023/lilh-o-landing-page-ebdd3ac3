@@ -164,22 +164,22 @@ export async function carregarClienteAtual(): Promise<{ id: string; nome: string
   return data;
 }
 
-export async function enviarCodigoTelefone(telefone: string) {
-  const phone = normalizarTelefone(telefone);
-  const { error } = await supabase.auth.signInWithOtp({ phone });
+export async function enviarCodigoEmail(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const { error } = await supabase.auth.signInWithOtp({ email: normalizedEmail });
   if (error) throw error;
-  return phone;
+  return normalizedEmail;
 }
 
-export async function confirmarCodigoTelefone(telefone: string, codigo: string) {
-  const phone = normalizarTelefone(telefone);
+export async function confirmarCodigoEmail(email: string, codigo: string) {
+  const normalizedEmail = email.trim().toLowerCase();
   const { data, error } = await supabase.auth.verifyOtp({
-    phone,
+    email: normalizedEmail,
     token: codigo.trim(),
-    type: "sms",
+    type: "email",
   });
   if (error) throw error;
-  return { ...data, phone };
+  return { ...data, email: normalizedEmail };
 }
 
 export async function sincronizarClienteAtual(nome: string, telefone: string) {
