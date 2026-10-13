@@ -129,6 +129,7 @@ function mapPedido(row: any): Pedido {
     entrega: row.tipo_entrega === "retirada" ? "Retirada no local" : "Entrega",
     endereco: formatEndereco(row.endereco),
     pagamento: row.pagamento,
+    pagamentoStatus: row.pagamento_status ?? "pendente",
     observacao: row.observacao || "",
     subtotal: Number(row.subtotal),
     taxa: Number(row.taxa_entrega),
@@ -230,7 +231,7 @@ export async function carregarPedidosCliente(): Promise<Pedido[]> {
   if (session?.user) {
     const { data, error } = await supabase
       .from("pedidos")
-      .select("numero,criado_em,nome_cliente,telefone,tipo_entrega,endereco,pagamento,observacao,subtotal,taxa_entrega,total,status,pedido_itens(id,produto_id,nome_produto,preco_unitario,quantidade,total)")
+      .select("numero,criado_em,nome_cliente,telefone,tipo_entrega,endereco,pagamento,pagamento_status,observacao,subtotal,taxa_entrega,total,status,pedido_itens(id,produto_id,nome_produto,preco_unitario,quantidade,total)")
       .order("criado_em", { ascending: false });
     if (error) throw error;
     return (data || []).map(mapPedido);
@@ -274,6 +275,7 @@ export async function carregarPedidosAdmin(): Promise<Pedido[]> {
     entrega: p.tipo_entrega === "retirada" ? "Retirada no local" : "Entrega",
     endereco: formatEndereco(p.endereco),
     pagamento: p.pagamento,
+    pagamentoStatus: p.pagamento_status ?? "pendente",
     observacao: p.observacao || "",
     subtotal: Number(p.subtotal),
     taxa: Number(p.taxa_entrega),
@@ -289,7 +291,18 @@ function formatEndereco(endereco: any) {
 }
 
 export async function atualizarStatusPedido(numero: string, status: string) {
+  const permitidos = ["Recebido", "Em preparo", "Pronto", "Saiu para entrega", "Concluído", "Cancelado"];
+  if (!permitidos.includes(status)) throw new Error("Status de pedido inválido.");
   const { error } = await supabase.from("pedidos").update({ status, atualizado_em: new Date().toISOString() }).eq("numero", numero);
+  if (error) throw error;
+}
+
+export async function atualizarPagamentoPedido(numero: string, pagamentoStatus: "pendente" | "aprovado") {
+  const { data, error: leituraErro } = await supabase.from("pedidos").select("pagamento").eq("numero", numero).maybeSingle();
+  if (leituraErro) throw leituraErro;
+  if (!data) throw new Error("Pedido não encontrado.");
+  if (data.pagamento === "PIX") throw new Error("O status do PIX é atualizado pelo Mercado Pago.");
+  const { error } = await supabase.from("pedidos").update({ pagamento_status: pagamentoStatus, atualizado_em: new Date().toISOString() }).eq("numero", numero);
   if (error) throw error;
 }
 
