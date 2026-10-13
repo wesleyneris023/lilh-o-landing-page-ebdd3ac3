@@ -237,7 +237,7 @@ function Dashboard() {
 
   const categoriasData = useMemo(() => {
     const mapa = new Map<string, number>();
-    const janela = pedidosValidos.filter((p) => {
+    const janela = pedidosPagos.filter((p) => {
       const diff = agora.getTime() - new Date(p.criadoEm).getTime();
       return diff >= 0 && diff <= periodoDias * 24 * 60 * 60 * 1000;
     });
