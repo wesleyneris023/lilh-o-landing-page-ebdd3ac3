@@ -298,10 +298,11 @@ export async function atualizarStatusPedido(numero: string, status: string) {
 }
 
 export async function atualizarPagamentoPedido(numero: string, pagamentoStatus: "pendente" | "aprovado") {
-  const { data, error: leituraErro } = await supabase.from("pedidos").select("pagamento").eq("numero", numero).maybeSingle();
+  const { data, error: leituraErro } = await supabase.from("pedidos").select("pagamento,status").eq("numero", numero).maybeSingle();
   if (leituraErro) throw leituraErro;
   if (!data) throw new Error("Pedido não encontrado.");
   if (data.pagamento === "PIX") throw new Error("O status do PIX é atualizado pelo Mercado Pago.");
+  if (data.status === "Cancelado") throw new Error("Pedidos cancelados não podem ser marcados como pagos.");
   const { error } = await supabase.from("pedidos").update({ pagamento_status: pagamentoStatus, atualizado_em: new Date().toISOString() }).eq("numero", numero);
   if (error) throw error;
 }
