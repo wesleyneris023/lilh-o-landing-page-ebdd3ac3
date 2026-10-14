@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Clock, Copy,
 import heroBurger from "@/assets/hero-burger.jpg";
 
 import { categorias, dinheiro, lerProdutos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
-import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente, consultarStatusPagamentoPix, carregarClienteAtual, enviarLinkAcessoEmail, sincronizarClienteAtual, sairCliente, ehAdmin } from "@/lib/api";
+import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente, consultarStatusPagamentoPix, carregarClienteAtual, enviarLinkAcessoEmail, sincronizarClienteAtual, sairCliente, ehAdmin, consultarPedidoPorNumeroTelefone } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 function categoriaIcone(cat: string) {
   switch (cat) {
@@ -39,6 +39,11 @@ function Index() {
   const [troco, setTroco] = useState("");
   const [observacao, setObservacao] = useState("");
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [consultaNumero, setConsultaNumero] = useState("");
+  const [consultaTelefone, setConsultaTelefone] = useState("");
+  const [consultaPedido, setConsultaPedido] = useState<Pedido | null>(null);
+  const [consultaErro, setConsultaErro] = useState("");
+  const [consultandoPedido, setConsultandoPedido] = useState(false);
   const [pedidoAtual, setPedidoAtual] = useState<Pedido | null>(null);
   const [aba, setAba] = useState<"inicio" | "pedidos" | "conta">("inicio");
   const [menu, setMenu] = useState<Produto[]>(lerProdutos());
@@ -403,6 +408,21 @@ function Index() {
       setVerificandoPix(false);
     }
   }
+  async function consultarPedidoRastreio(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setConsultandoPedido(true);
+    setConsultaErro("");
+    setConsultaPedido(null);
+    try {
+      const resultado = await consultarPedidoPorNumeroTelefone(consultaNumero, consultaTelefone);
+      setConsultaPedido(resultado);
+    } catch (error) {
+      setConsultaErro(error instanceof Error ? error.message : "Não foi possível consultar o pedido agora.");
+    } finally {
+      setConsultandoPedido(false);
+    }
+  }
+
   async function abrirMeusPedidos() {
     try {
       const lista = await carregarPedidosCliente();
@@ -476,7 +496,29 @@ function Index() {
           {(categoria === "Todos" ? categoriasMenu.slice(1) : [categoria]).map(cat => { const itens = filtrados.filter(p => p.categoria === cat); if (!itens.length) return null; const Icon = categoriaIcone(cat); return <section key={cat} className="mb-7"><div className="mb-3 flex items-center gap-3"><Icon className="size-6 text-[#ffc400]"/><h2 className="text-xl font-black">{cat}</h2></div><div className="space-y-2.5">{itens.map(p => <article key={p.id} className="flex min-h-[116px] overflow-hidden rounded-xl border border-white/15 bg-[#141617]"><div className="w-[112px] shrink-0 bg-black sm:w-36">{p.imagem ? <img src={p.imagem} alt={p.nome} loading="lazy" className="h-full min-h-[116px] w-full object-cover"/> : <div className="grid h-full min-h-[116px] place-items-center text-4xl">{cat === "Bebidas" ? "🥤" : cat === "Sorvetes" ? "🍨" : cat === "Pizzas" ? "🍕" : "🥪"}</div>}</div><div className="flex min-w-0 flex-1 items-center justify-between gap-2 p-3"><div className="min-w-0"><h3 className="text-sm font-bold">{p.nome}</h3><p className="mt-1 line-clamp-2 text-xs text-white/55">{p.descricao}</p><p className="mt-1.5 font-black text-[#ffc400]">{dinheiro(p.preco)}</p></div><button onClick={() => adicionar(p)} aria-label={`Adicionar ${p.nome}`} className="grid size-10 shrink-0 place-items-center rounded-full bg-[#ffc400] text-black"><Plus className="size-5"/></button></div></article>)}</div></section>; })}{filtrados.length === 0 && <p className="p-8 text-center text-white/50">Nenhum item encontrado.</p>}</section>
         <section className="border-t border-white/10 bg-[#111314] px-4 py-8 text-center"><p className="text-xs font-black uppercase tracking-[.2em] text-[#ffc400]">Estamos por aqui</p><h2 className="mt-2 text-2xl font-black">Lilhão, sabor que conquista</h2><div className="mt-5 flex flex-wrap justify-center gap-4 text-sm text-white/50"><span><Clock className="mr-1 inline size-4 text-[#ffc400]"/>{horarioAbertura} às {horarioFechamento}</span><span><Phone className="mr-1 inline size-4 text-[#ffc400]"/>Pedidos</span></div></section></main>}
 
-      {aba === "pedidos" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-6"><div className="flex items-center gap-3"><ClipboardList className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Sua conta</p><h1 className="text-2xl font-black">Meus pedidos</h1></div></div>{pedidos.length === 0 ? <div className="py-24 text-center"><ShoppingBag className="mx-auto size-12 text-white/20"/><h2 className="mt-4 text-lg font-bold">Nenhum pedido encontrado</h2><p className="mt-2 text-sm text-white/45">{cliente ? "Seus pedidos ficam vinculados à sua conta e podem ser acompanhados em qualquer dispositivo." : "Você pode acompanhar pedidos feitos neste navegador. Ao criar sua conta, seus pedidos serão vinculados ao seu perfil."}</p><button onClick={() => setAba("inicio")} className={`${actionClass} mt-5`}>Ver cardápio</button></div> : <div className="mt-5 space-y-3">{pedidos.map(p => <article key={p.numero} className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex items-center justify-between gap-3"><div><p className="text-xs text-white/45">Pedido #{p.numero}</p><p className="mt-1 font-black">{new Date(p.criadoEm).toLocaleDateString("pt-BR")}</p></div><span className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-300">{p.status}</span></div><div className="mt-3 flex items-center justify-between"><p className="text-sm text-white/60">{p.itens.reduce((s,i)=>s+i.quantidade,0)} item(ns) • {p.entrega}</p><b className="text-[#ffc400]">{dinheiro(p.total)}</b></div><button onClick={() => setPedidoAtual(p)} className="mt-3 w-full rounded-lg border border-white/10 py-2.5 text-sm font-bold">Ver detalhes</button></article>)}</div>}{pedidoAtual && checkoutEtapa === 0 && <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/75" onClick={() => setPedidoAtual(null)}><section onClick={e=>e.stopPropagation()} className="max-h-[80dvh] w-full max-w-xl overflow-y-auto rounded-t-3xl border border-white/10 bg-[#141617] p-5"><div className="flex items-center justify-between"><h2 className="text-xl font-black">Pedido #{pedidoAtual.numero}</h2><button onClick={() => setPedidoAtual(null)}><X className="size-5"/></button></div><p className="mt-3 text-sm text-white/60">{pedidoAtual.nome} • {pedidoAtual.telefone}</p><p className="mt-1 text-sm">{pedidoAtual.endereco}</p><p className="mt-2 text-sm">Pagamento: {pedidoAtual.pagamento}</p><div className="mt-4 space-y-2 border-t border-white/10 pt-3">{pedidoAtual.itens.map(i=><div key={i.id} className="flex justify-between text-sm"><span>{i.quantidade}x {i.nome}</span><span>{dinheiro(i.preco*i.quantidade)}</span></div>)}</div><div className="mt-3 flex justify-between border-t border-white/10 pt-3 font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(pedidoAtual.total)}</span></div></section></div>}</main>}
+      {aba === "pedidos" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-6">
+      <div className="flex items-center gap-3"><ClipboardList className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Acompanhe sua compra</p><h1 className="text-2xl font-black">Rastrear pedido</h1></div></div>
+      <p className="mt-2 text-sm text-white/55">Informe o número do pedido e o celular usado na compra. Não precisa criar conta nem entrar pelo e-mail.</p>
+      <form onSubmit={consultarPedidoRastreio} className="mt-5 space-y-4 rounded-2xl border border-white/10 bg-[#141617] p-4 sm:p-5">
+        <label className="block text-sm font-bold">Número do pedido
+          <input required value={consultaNumero} onChange={e => setConsultaNumero(e.target.value.toUpperCase())} placeholder="LH-20261014-0001" autoCapitalize="characters" className={inputClass}/>
+        </label>
+        <label className="block text-sm font-bold">Celular usado na compra
+          <input required value={consultaTelefone} onChange={e => setConsultaTelefone(e.target.value)} placeholder="DDD + número" inputMode="tel" autoComplete="tel" className={inputClass}/>
+        </label>
+        {consultaErro && <p role="alert" className="rounded-lg border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-200">{consultaErro}</p>}
+        <button type="submit" disabled={consultandoPedido} className={`${actionClass} w-full`}>{consultandoPedido ? "Consultando..." : "Consultar pedido"} <Search className="ml-1 inline size-4"/></button>
+        <p className="text-xs text-white/40">Por segurança, só mostramos o pedido quando o número e o telefone correspondem.</p>
+      </form>
+      {consultaPedido && <article className="mt-5 rounded-2xl border border-[#ffc400]/30 bg-[#141617] p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs text-white/45">Pedido encontrado</p><h2 className="mt-1 text-lg font-black">{consultaPedido.numero}</h2><p className="mt-1 text-sm text-white/50">{new Date(consultaPedido.criadoEm).toLocaleString("pt-BR")}</p></div><span className="rounded-full bg-[#ffc400]/10 px-3 py-1.5 text-xs font-bold text-[#ffc400]">{consultaPedido.status}</span></div>
+        <div className="mt-4 space-y-2 border-t border-white/10 pt-4">{consultaPedido.itens.map((item, index) => <div key={`${item.id}-${index}`} className="flex justify-between gap-3 text-sm"><span>{item.quantidade}x {item.nome}</span><span className="whitespace-nowrap">{dinheiro(item.preco * item.quantidade)}</span></div>)}</div>
+        <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-4"><span className="text-sm text-white/55">{consultaPedido.entrega} • {consultaPedido.pagamento}</span><strong className="text-lg text-[#ffc400]">{dinheiro(consultaPedido.total)}</strong></div>
+        <p className="mt-3 text-xs text-white/45">Situação do pagamento: {consultaPedido.pagamentoStatus === "aprovado" ? "Aprovado" : consultaPedido.pagamentoStatus === "recusado" ? "Recusado" : consultaPedido.pagamentoStatus === "cancelado" ? "Cancelado" : "Pendente"}</p>
+        <button type="button" onClick={() => { setConsultaPedido(null); setConsultaErro(""); }} className={`${quietClass} mt-4 w-full`}>Consultar outro pedido</button>
+      </article>}
+      <button onClick={() => setAba("inicio")} className={`${quietClass} mt-4 w-full`}>Voltar ao cardápio</button>
+    </main>}
       {aba === "conta" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-8">
         <div className="flex items-center gap-3"><User className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Sua conta</p><h1 className="text-2xl font-black">Minha conta</h1></div></div>
         {sessaoCarregando ? <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-6 text-center text-white/50">Carregando sua conta...</div> : cliente ? <div className="mt-5 space-y-4">
