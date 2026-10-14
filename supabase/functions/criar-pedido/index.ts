@@ -170,6 +170,55 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (body?.acao === "consultar_pedido_por_telefone") {
+      const numero = typeof body?.numero === "string" ? body.numero.trim().toUpperCase() : "";
+      const telefoneInformado = typeof body?.telefone === "string" ? body.telefone.trim() : "";
+      const digitosInformados = telefoneInformado.replace(/[^0-9]/g, "");
+      const telefoneNormalizado = (value: string) => {
+        const digits = value.replace(/[^0-9]/g, "");
+        return (digits.length === 12 || digits.length === 13) && digits.startsWith("55") ? digits.slice(2) : digits;
+      };
+
+      if (!/^LH-\\d{8}-\\d{4,}$/.test(numero) || ![10, 11, 12, 13].includes(digitosInformados.length)) {
+        return new Response(JSON.stringify({ error: "Não encontramos um pedido com esses dados. Confira o número e o celular." }), {
+          status: 404,
+          headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
+
+      const lookupRateKey = `lookup-ip:${await sha256Hex(`${key}:${clientIp}`)}`;
+      const { data: lookupAttempts, error: lookupRateError } = await admin.rpc("registrar_tentativa_pedido", {
+        p_rate_limit_key: lookupRateKey,
+      });
+      if (lookupRateError) throw lookupRateError;
+      if (Number(lookupAttempts) > 10) {
+        return new Response(JSON.stringify({ error: "Muitas tentativas de consulta. Aguarde 10 minutos e tente novamente." }), {
+          status: 429,
+          headers: { ...cors, "Content-Type": "application/json", "Retry-After": "600" },
+        });
+      }
+
+      const { data: row, error: lookupError } = await admin
+        .from("pedidos")
+        .select("numero,criado_em,nome_cliente,telefone,tipo_entrega,pagamento,pagamento_status,status,subtotal,taxa_entrega,total,pedido_itens(id,produto_id,nome_produto,preco_unitario,quantidade,total)")
+        .eq("numero", numero)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+
+      if (!row || telefoneNormalizado(String(row.telefone || "")) !== telefoneNormalizado(telefoneInformado)) {
+        return new Response(JSON.stringify({ error: "Não encontramos um pedido com esses dados. Confira o número e o celular." }), {
+          status: 404,
+          headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
+
+      // Return only the details needed for tracking; never expose delivery address or notes.
+      return new Response(JSON.stringify({ pedido: row }), {
+        status: 200,
+        headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
+      });
+    }
+
     if (body?.acao === "consultar_pagamento") {
       const token = typeof body?.cliente_token === "string" ? body.cliente_token.trim() : "";
       const numero = typeof body?.numero === "string" ? body.numero.trim() : "";
