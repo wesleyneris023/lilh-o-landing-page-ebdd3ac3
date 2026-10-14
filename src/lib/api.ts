@@ -228,6 +228,34 @@ export async function consultarStatusPagamentoPix(numero: string) {
   };
 }
 
+export async function consultarPedidoPorNumeroTelefone(numero: string, telefone: string): Promise<Pedido> {
+  const numeroNormalizado = numero.trim().toUpperCase();
+  const telefoneNormalizado = telefone.trim();
+  if (!/^LH-\\d{8}-\\d{4,}$/.test(numeroNormalizado)) {
+    throw new Error("Informe o número completo do pedido, por exemplo LH-20261014-0001.");
+  }
+  if (telefoneNormalizado.replace(/\\D/g, "").length < 10) {
+    throw new Error("Informe o celular com DDD usado na compra.");
+  }
+  const response = await fetch(ORDER_FUNCTION_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || "",
+    },
+    body: JSON.stringify({
+      acao: "consultar_pedido_por_telefone",
+      numero: numeroNormalizado,
+      telefone: telefoneNormalizado,
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (response.status === 404) throw new Error("Não encontramos um pedido com esses dados. Confira o número e o celular.");
+  if (!response.ok) throw new Error(body?.error || "Não foi possível consultar o pedido agora.");
+  if (!body?.pedido) throw new Error("Não encontramos um pedido com esses dados. Confira o número e o celular.");
+  return mapPedido(body.pedido);
+}
+
 export async function carregarPedidosCliente(): Promise<Pedido[]> {
   const { data: { session } } = await supabase.auth.getSession();
 
