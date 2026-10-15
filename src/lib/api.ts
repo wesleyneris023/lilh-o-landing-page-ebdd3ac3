@@ -257,10 +257,10 @@ export async function consultarPedidoPorNumeroTelefone(numero: string, telefone:
 }
 
 export async function criarContaCliente(nome: string, telefone: string): Promise<{ cliente: { id: string; nome: string; telefone: string }; pedidos: Pedido[] }> {
-  const nomeNormalizado = nome.trim().replace(/\\s+/g, " ");
+  const nomeNormalizado = nome.trim().replace(/\s+/g, " ");
   const telefoneNormalizado = telefone.trim();
   if (nomeNormalizado.split(" ").length < 2) throw new Error("Informe seu nome completo, com nome e sobrenome.");
-  if (![10, 11, 12, 13].includes(telefoneNormalizado.replace(/\\D/g, "").length)) {
+  if (![10, 11, 12, 13].includes(telefoneNormalizado.replace(/\D/g, "").length)) {
     throw new Error("Informe um celular válido com DDD.");
   }
   const response = await fetch(ORDER_FUNCTION_URL, {
