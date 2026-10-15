@@ -231,7 +231,7 @@ export async function consultarStatusPagamentoPix(numero: string) {
 export async function consultarPedidoPorNumeroTelefone(numero: string, telefone: string): Promise<Pedido> {
   const numeroNormalizado = numero.trim().toUpperCase();
   const telefoneNormalizado = telefone.trim();
-  if (!/^LH-\\d{8}-\\d{4,}$/.test(numeroNormalizado)) {
+  if (!/^LH-\d{8}-\d{4,}$/.test(numeroNormalizado)) {
     throw new Error("Informe o número completo do pedido, por exemplo LH-20261014-0001.");
   }
   if (telefoneNormalizado.replace(/\\D/g, "").length < 10) {
