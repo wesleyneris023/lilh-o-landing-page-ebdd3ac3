@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Clock, Copy,
 import heroBurger from "@/assets/hero-burger.jpg";
 
 import { categorias, dinheiro, lerProdutos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
-import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente, consultarStatusPagamentoPix, carregarClienteAtual, enviarLinkAcessoEmail, sincronizarClienteAtual, sairCliente, ehAdmin, consultarPedidoPorNumeroTelefone } from "@/lib/api";
+import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente, consultarStatusPagamentoPix, ehAdmin, consultarPedidoPorNumeroTelefone, consultarHistoricoPorNomeTelefone } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 function categoriaIcone(cat: string) {
   switch (cat) {
@@ -72,15 +72,11 @@ function Index() {
   const [configCarregada, setConfigCarregada] = useState(false);
   const [agoraTick, setAgoraTick] = useState(() => Date.now());
   const [formasPagamento, setFormasPagamento] = useState<string[]>([]);
-  const [cliente, setCliente] = useState<{ id: string; nome: string; telefone: string } | null>(null);
   const [contaTelefone, setContaTelefone] = useState("");
-  const [contaEmail, setContaEmail] = useState("");
   const [contaNome, setContaNome] = useState("");
-  const [contaCodigo, setContaCodigo] = useState("");
-  const [contaEtapa, setContaEtapa] = useState<"dados" | "link_enviado">("dados");
   const [contaCarregando, setContaCarregando] = useState(false);
   const [contaErro, setContaErro] = useState("");
-  const [sessaoCarregando, setSessaoCarregando] = useState(true);
+  const [contaConsultou, setContaConsultou] = useState(false);
   const [acessoAdmin, setAcessoAdmin] = useState(false);
 
   useEffect(() => {
@@ -155,86 +151,18 @@ function Index() {
   }, []);
 
   useEffect(() => {
-    let ativo = true;
-    const carregarSessaoCliente = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          let perfil = await carregarClienteAtual();
-          if (!perfil) {
-            const metadata = session.user.user_metadata ?? {};
-            const nomeMeta = typeof metadata.nome === "string" ? metadata.nome : "";
-            const telefoneMeta = typeof metadata.telefone === "string" ? metadata.telefone : "";
-            if (nomeMeta.trim().length >= 2 && telefoneMeta.replace(/\D/g, "").length >= 10) {
-              perfil = await sincronizarClienteAtual(nomeMeta, telefoneMeta);
-            }
-          }
-          if (ativo) setCliente(perfil);
-        } else if (ativo) {
-          setCliente(null);
-        }
-      } catch {
-        if (ativo) setCliente(null);
-      } finally {
-        if (ativo) setSessaoCarregando(false);
+    try {
+      const saved = window.localStorage.getItem("lilhao-historico-cliente-v1");
+      if (saved) {
+        const parsed = JSON.parse(saved) as { nome?: string; telefone?: string };
+        if (parsed.nome) setContaNome(parsed.nome);
+        if (parsed.telefone) setContaTelefone(parsed.telefone);
       }
-    };
-    carregarSessaoCliente();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        setCliente(null);
-        return;
-      }
-      window.setTimeout(async () => {
-        try {
-          let perfil = await carregarClienteAtual();
-          if (!perfil) {
-            const { data: { user } } = await supabase.auth.getUser();
-            const metadata = user?.user_metadata ?? {};
-            const nomeMeta = typeof metadata.nome === "string" ? metadata.nome : "";
-            const telefoneMeta = typeof metadata.telefone === "string" ? metadata.telefone : "";
-            if (nomeMeta.trim().length >= 2 && telefoneMeta.replace(/\D/g, "").length >= 10) {
-              perfil = await sincronizarClienteAtual(nomeMeta, telefoneMeta);
-            }
-          }
-          if (ativo) setCliente(perfil);
-        } catch {
-          if (ativo) setCliente(null);
-        }
-      }, 0);
-    });
-
-    return () => {
-      ativo = false;
-      subscription.unsubscribe();
-    };
+    } catch {
+      window.localStorage.removeItem("lilhao-historico-cliente-v1");
+    }
   }, []);
 
-  useEffect(() => {
-    if (!cliente) return;
-    setNome(cliente.nome);
-    setTelefone(cliente.telefone);
-  }, [cliente]);
-
-  useEffect(() => {
-    if (aba !== "pedidos" || checkoutEtapa !== 0) return;
-    let ativo = true;
-    const atualizarHistorico = async () => {
-      try {
-        const lista = await carregarPedidosCliente();
-        if (ativo) setPedidos(lista.length ? lista : pedidoAtual ? [pedidoAtual] : []);
-      } catch {
-        if (ativo && pedidoAtual) setPedidos([pedidoAtual]);
-      }
-    };
-    atualizarHistorico();
-    const timer = window.setInterval(atualizarHistorico, 15000);
-    return () => {
-      ativo = false;
-      window.clearInterval(timer);
-    };
-  }, [aba, checkoutEtapa, pedidoAtual?.numero]);
 
   const filtrados = useMemo(() => menu.filter((p) => (categoria === "Todos" || p.categoria === categoria) && `${p.nome} ${p.descricao}`.toLowerCase().includes(busca.toLowerCase())), [categoria, busca, menu]);
   const quantidade = sacola.reduce((t, i) => t + i.quantidade, 0);
@@ -253,161 +181,32 @@ function Index() {
     return abertura < fechamento ? minutos >= abertura && minutos < fechamento : minutos >= abertura || minutos < fechamento;
   }, [agoraTick, configCarregada, aceitaPedidos, horarioAbertura, horarioFechamento]);
  
-  async function enviarCodigoConta() {
+  async function consultarHistoricoConta() {
     setContaErro("");
-    if (contaNome.trim().length < 2) {
-      setContaErro("Informe seu nome.");
+    setContaConsultou(false);
+    if (contaNome.trim().split(/\\s+/).length < 2) {
+      setContaErro("Informe seu nome completo, com nome e sobrenome.");
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contaEmail.trim())) {
-      setContaErro("Informe um e-mail válido.");
-      return;
-    }
-    if (contaTelefone.replace(/\D/g, "").length < 10) {
-      setContaErro("Informe um celular válido com DDD para vincular seus pedidos.");
+    if (![10, 11, 12, 13].includes(contaTelefone.replace(/\\D/g, "").length)) {
+      setContaErro("Informe um celular válido com DDD.");
       return;
     }
     setContaCarregando(true);
     try {
-      await enviarLinkAcessoEmail(contaEmail.trim(), contaNome.trim(), contaTelefone.trim());
-      setContaEtapa("link_enviado");
+      const lista = await consultarHistoricoPorNomeTelefone(contaNome, contaTelefone);
+      setPedidos(lista);
+      setContaConsultou(true);
+      window.localStorage.setItem("lilhao-historico-cliente-v1", JSON.stringify({ nome: contaNome.trim(), telefone: contaTelefone.trim() }));
+      if (lista.length) setAba("pedidos");
+      else setContaErro("Ainda não encontramos pedidos com esse nome e celular. Confira os dados usados na compra.");
     } catch (error) {
-      setContaErro(error instanceof Error ? error.message : "Não foi possível enviar o código.");
+      setContaErro(error instanceof Error ? error.message : "Não foi possível consultar seu histórico agora.");
     } finally {
       setContaCarregando(false);
     }
   }
 
-
-  async function sairDaConta() {
-    setContaErro("");
-    setContaCarregando(true);
-    try {
-      await sairCliente();
-      setCliente(null);
-      setContaNome("");
-      setContaTelefone("");
-      setContaEmail("");
-      setContaCodigo("");
-      setPedidos([]);
-      setContaEtapa("dados");
-    } catch (error) {
-      setContaErro(error instanceof Error ? error.message : "Não foi possível sair da conta.");
-    } finally {
-      setContaCarregando(false);
-    }
-  }
-
-  function adicionar(produto: Produto) { setSacola((atual) => { const existe = atual.find((i) => i.id === produto.id); return existe ? atual.map((i) => i.id === produto.id ? { ...i, quantidade: i.quantidade + 1 } : i) : [...atual, { ...produto, quantidade: 1 }]; }); }
-  function alterarQuantidade(id: string, delta: number) { setSacola((atual) => atual.map((i) => i.id === id ? { ...i, quantidade: i.quantidade + delta } : i).filter((i) => i.quantidade > 0)); }
-  function abrirCheckout() {
-    setErroCheckout("");
-    if (!configCarregada) {
-      setErroCheckout("A loja ainda está carregando. Tente novamente em alguns segundos.");
-      return;
-    }
-    if (!lojaAberta) {
-      setErroCheckout(aceitaPedidos ? `Estamos fechados. Atendimento: ${horarioAbertura} às ${horarioFechamento}.` : "A lanchonete está temporariamente sem receber pedidos.");
-      return;
-    }
-    if (pedidoMinimo > 0 && subtotal < pedidoMinimo) {
-      setErroCheckout(`O pedido mínimo é de ${dinheiro(pedidoMinimo)}.`);
-      return;
-    }
-    if (!sacola.length) return;
-    setSacolaAberta(false);
-    setPedidoIdempotencyKey(crypto.randomUUID());
-    setCheckoutEtapa(1);
-    setAba("inicio");
-  }
-  function continuarEntrega() { if (!nome.trim() || !telefone.trim() || (tipoEntrega === "entrega" && (!rua.trim() || !numero.trim() || !bairro.trim()))) return; setCheckoutEtapa(2); }
-  function continuarPagamento() { if (!pagamento) return; setCheckoutEtapa(3); }
-  async function confirmarPedido() {
-    if (!sacola.length || enviandoPedido) return;
-    setErroCheckout("");
-    setEnviandoPedido(true);
-    const idempotencyKey = pedidoIdempotencyKey || crypto.randomUUID();
-    if (!pedidoIdempotencyKey) setPedidoIdempotencyKey(idempotencyKey);
-    if (pagamento === "PIX" && !email.trim()) {
-      setErroCheckout("Informe um e-mail válido para gerar o PIX.");
-      setEnviandoPedido(false);
-      return;
-    }
-    const enderecoTexto = tipoEntrega === "retirada"
-      ? "Retirada no local"
-      : rua + ", " + numero + " — " + bairro + (complemento ? ", " + complemento : "") + (referencia ? " (Ref.: " + referencia + ")" : "");
-    try {
-      const criado = await criarPedidoReal({
-        nome,
-        telefone,
-        email: email.trim(),
-        tipo_entrega: tipoEntrega,
-        endereco: { cep, rua, numero, bairro, complemento, referencia, texto: enderecoTexto },
-        pagamento,
-        observacao,
-        itens: sacola.map((item) => ({ id: item.id, quantidade: item.quantidade })),
-        idempotency_key: idempotencyKey,
-      });
-      const novo: Pedido = {
-        numero: criado.numero,
-        criadoEm: new Date().toISOString(),
-        itens: sacola,
-        nome,
-        telefone,
-        entrega: tipoEntrega === "retirada" ? "Retirada no local" : "Entrega",
-        endereco: enderecoTexto,
-        pagamento: pagamento + (pagamento === "Dinheiro" && troco ? " (troco para " + troco + ")" : ""),
-        observacao,
-        subtotal: Number(criado.subtotal),
-        taxa: Number(criado.taxa_entrega),
-        total: Number(criado.total),
-        status: "Recebido",
-        pagamentoStatus: (criado.pagamento_status as Pedido["pagamentoStatus"]) ?? "pendente",
-      };
-      setPedidos((atual) => [novo, ...atual]);
-      setPedidoAtual(novo);
-
-      if (pagamento === "PIX") {
-        if (!criado.pix?.qr_code) throw new Error("O Mercado Pago não retornou o código PIX.");
-        setPixData(criado.pix);
-        setPixStatus("pendente");
-        setCheckoutEtapa(4);
-        return;
-      }
-
-      setSacola([]);
-      setPedidoIdempotencyKey("");
-      setCheckoutEtapa(5);
-    } catch (error) {
-      setErroCheckout(error instanceof Error ? error.message : "Não foi possível enviar o pedido. Tente novamente.");
-    } finally {
-      setEnviandoPedido(false);
-    }
-  }
-
-  async function verificarPagamentoPix() {
-    if (!pedidoAtual || verificandoPix) return;
-    setVerificandoPix(true);
-    setErroCheckout("");
-    try {
-      const resultado = await consultarStatusPagamentoPix(pedidoAtual.numero);
-      const status = resultado.pagamento_status as typeof pixStatus;
-      setPixStatus(status);
-      if (status === "aprovado") {
-        setSacola([]);
-        setPedidoIdempotencyKey("");
-        setCheckoutEtapa(5);
-      } else if (status === "recusado" || status === "cancelado") {
-        setErroCheckout("O pagamento PIX não foi aprovado. Você pode voltar e tentar novamente.");
-      } else {
-        setErroCheckout("O pagamento ainda está pendente. Se você já pagou, aguarde alguns segundos e verifique novamente.");
-      }
-    } catch (error) {
-      setErroCheckout(error instanceof Error ? error.message : "Não foi possível verificar o pagamento agora.");
-    } finally {
-      setVerificandoPix(false);
-    }
-  }
   async function consultarPedidoRastreio(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setConsultandoPedido(true);
@@ -424,17 +223,25 @@ function Index() {
   }
 
   async function abrirMeusPedidos() {
-    try {
-      const lista = await carregarPedidosCliente();
-      setPedidos(lista.length ? lista : pedidoAtual ? [pedidoAtual] : []);
-    } catch {
-      setPedidos(pedidoAtual ? [pedidoAtual] : []);
-    }
-    setAba("pedidos");
     setCheckoutEtapa(0);
     setSacolaAberta(false);
     setPixData(null);
     setPixStatus("pendente");
+    if (contaNome.trim().split(/\\s+/).length >= 2 && [10, 11, 12, 13].includes(contaTelefone.replace(/\\D/g, "").length)) {
+      setContaCarregando(true);
+      try {
+        const lista = await consultarHistoricoPorNomeTelefone(contaNome, contaTelefone);
+        setPedidos(lista.length ? lista : pedidoAtual ? [pedidoAtual] : []);
+        setAba("pedidos");
+      } catch (error) {
+        setContaErro(error instanceof Error ? error.message : "Não foi possível carregar o histórico.");
+        setAba("conta");
+      } finally {
+        setContaCarregando(false);
+      }
+    } else {
+      setAba("conta");
+    }
   }
 
   const inputClass = "mt-1.5 min-h-12 w-full rounded-xl border border-white/10 bg-[#101112] px-4 text-base text-white outline-none placeholder:text-white/30 focus:border-[#ffc400]";
@@ -505,40 +312,16 @@ function Index() {
       {aba === "conta" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-8">
         <div className="flex items-center gap-3"><User className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Sua conta</p><h1 className="text-2xl font-black">Minha conta</h1></div></div>
         <div className="mt-5 rounded-2xl border border-[#ffc400]/25 bg-[#141617] p-5">
-          <p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">Consulta rápida</p><h2 className="mt-2 text-xl font-black">Acompanhar pedido</h2><p className="mt-2 text-sm leading-relaxed text-white/50">Digite o número do pedido e o celular usado na compra. Não precisa entrar por e-mail nem criar conta.</p>
-          <form onSubmit={consultarPedidoRastreio} className="mt-4 space-y-3">
-            <label className="block text-xs font-bold text-white/55">Número do pedido<input required value={consultaNumero} onChange={e => setConsultaNumero(e.target.value.toUpperCase())} placeholder="LH-20261014-0001" autoCapitalize="characters" className={inputClass}/></label>
-            <label className="block text-xs font-bold text-white/55">Celular usado na compra<input required value={consultaTelefone} onChange={e => setConsultaTelefone(e.target.value)} placeholder="DDD + número" inputMode="tel" autoComplete="tel" className={inputClass}/></label>
-            {consultaErro && <p role="alert" className="rounded-lg border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-200">{consultaErro}</p>}
-            <button type="submit" disabled={consultandoPedido} className={`${actionClass} w-full`}>{consultandoPedido ? "Consultando..." : "Consultar pedido"} <Search className="ml-1 inline size-4"/></button>
-            <p className="text-[11px] text-white/35">Por segurança, o pedido só aparece quando número e celular correspondem.</p>
-          </form>
-          {consultaPedido && <article className="mt-4 rounded-xl border border-[#ffc400]/30 bg-black/20 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs text-white/45">Pedido encontrado</p><h3 className="mt-1 font-black">{consultaPedido.numero}</h3><p className="mt-1 text-xs text-white/50">{new Date(consultaPedido.criadoEm).toLocaleString("pt-BR")}</p></div><span className="rounded-full bg-[#ffc400]/10 px-3 py-1.5 text-xs font-bold text-[#ffc400]">{consultaPedido.status}</span></div>
-            <div className="mt-3 space-y-2 border-t border-white/10 pt-3">{consultaPedido.itens.map((item, index) => <div key={`${item.id}-${index}`} className="flex justify-between gap-3 text-sm"><span>{item.quantidade}x {item.nome}</span><span className="whitespace-nowrap">{dinheiro(item.preco * item.quantidade)}</span></div>)}</div>
-            <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3"><span className="text-xs text-white/50">{consultaPedido.entrega} • {consultaPedido.pagamento}</span><strong className="text-[#ffc400]">{dinheiro(consultaPedido.total)}</strong></div>
-            <p className="mt-2 text-xs text-white/45">Pagamento: {consultaPedido.pagamentoStatus === "aprovado" ? "Aprovado" : consultaPedido.pagamentoStatus === "recusado" ? "Recusado" : consultaPedido.pagamentoStatus === "cancelado" ? "Cancelado" : "Pendente"}</p>
-            <button type="button" onClick={() => { setConsultaPedido(null); setConsultaErro(""); }} className={`${quietClass} mt-3 w-full`}>Consultar outro pedido</button>
-          </article>}
-        </div>
-        {sessaoCarregando ? <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-6 text-center text-white/50">Carregando sua conta...</div> : cliente ? <div className="mt-5 space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-[#141617] p-5"><p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">Conta verificada</p><h2 className="mt-2 text-2xl font-black">{cliente.nome}</h2><p className="mt-1 text-sm text-white/50">{cliente.telefone}</p><div className="mt-5 grid gap-3 sm:grid-cols-2"><button onClick={abrirMeusPedidos} className={actionClass+" w-full"}>Meus pedidos <ArrowRight className="ml-1 inline size-4"/></button><button onClick={sairDaConta} disabled={contaCarregando} className={quietClass+" w-full"}>Sair da conta</button></div></div>
-          <div className="rounded-2xl border border-white/10 bg-[#141617] p-5"><h3 className="font-black">Seus dados</h3><p className="mt-2 text-sm text-white/50">Seus pedidos agora ficam vinculados à sua conta, e não apenas a este navegador.</p></div>
-        </div> : <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-5">
-          <p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">Entrar ou criar conta</p><h2 className="mt-2 text-2xl font-black">Acompanhe seus pedidos</h2><p className="mt-2 text-sm leading-relaxed text-white/50">Use seu e-mail para receber um link seguro de acesso. Não precisa criar senha.</p>
-          {contaErro && <div className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-200">{contaErro}</div>}
-          {contaEtapa === "dados" ? <div className="mt-5 space-y-3">
-            <label className="block text-xs font-bold text-white/55">Nome<input value={contaNome} onChange={e=>setContaNome(e.target.value)} placeholder="Seu nome" className={inputClass}/></label>
-            <label className="block text-xs font-bold text-white/55">E-mail<input type="email" value={contaEmail} onChange={e=>setContaEmail(e.target.value)} autoComplete="email" placeholder="voce@exemplo.com" className={inputClass}/></label>
+          <p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">Acesso sem e-mail</p><h2 className="mt-2 text-2xl font-black">Seu histórico de compras</h2><p className="mt-2 text-sm leading-relaxed text-white/50">Informe o nome completo e o celular usados nos pedidos. Não precisa de e-mail, código ou senha.</p>
+          {contaErro && <div role="alert" className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 text-sm text-amber-100">{contaErro}</div>}
+          <div className="mt-5 space-y-3">
+            <label className="block text-xs font-bold text-white/55">Nome completo<input value={contaNome} onChange={e=>setContaNome(e.target.value)} autoComplete="name" placeholder="Seu nome e sobrenome" className={inputClass}/></label>
             <label className="block text-xs font-bold text-white/55">Celular / WhatsApp<input value={contaTelefone} onChange={e=>setContaTelefone(e.target.value)} inputMode="tel" autoComplete="tel" placeholder="(96) 99999-9999" className={inputClass}/></label>
-            <button onClick={enviarCodigoConta} disabled={contaCarregando} className={actionClass+" w-full"}>{contaCarregando ? "Enviando link..." : "Receber link por e-mail"} <ArrowRight className="ml-1 inline size-4"/></button>
-            <p className="text-center text-[11px] text-white/35">O link confirma seu e-mail; o celular informado ajuda a localizar seus pedidos anteriores.</p>
-          </div> : <div className="mt-5 space-y-3">
-            <p className="text-sm text-white/70">Se a solicitação foi aceita, enviamos um link para <strong className="text-white">{contaEmail}</strong>.</p>
-            <p className="text-sm text-white/55">Abra o e-mail e clique em “Entrar no Lilhão”. Use o mesmo navegador para concluir o acesso. Confira também a pasta de spam.</p>
-            <button onClick={()=>{setContaEtapa("dados");setContaErro("");}} className={quietClass+" w-full"}>Voltar</button>
-          </div>}
-        </div>}
+            <button onClick={consultarHistoricoConta} disabled={contaCarregando} className={actionClass+" w-full"}>{contaCarregando ? "Buscando seus pedidos..." : "Acessar meu histórico"} <ArrowRight className="ml-1 inline size-4"/></button>
+            <p className="text-[11px] leading-relaxed text-white/35">Use os mesmos dados informados na compra. Por segurança, as consultas têm limite de tentativas.</p>
+          </div>
+          {contaConsultou && pedidos.length === 0 && <p className="mt-4 text-sm text-white/60">Nenhum pedido encontrado para esses dados.</p>}
+        </div>
       </main>}
     </>}
 
