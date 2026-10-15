@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Clock, Copy,
 import heroBurger from "@/assets/hero-burger.jpg";
 
 import { categorias, dinheiro, lerProdutos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
-import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, consultarStatusPagamentoPix, ehAdmin, consultarHistoricoPorNomeTelefone } from "@/lib/api";
+import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, consultarStatusPagamentoPix, ehAdmin, criarContaCliente } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 function categoriaIcone(cat: string) {
   switch (cat) {
@@ -72,6 +72,7 @@ function Index() {
   const [contaCarregando, setContaCarregando] = useState(false);
   const [contaErro, setContaErro] = useState("");
   const [contaConsultou, setContaConsultou] = useState(false);
+  const [contaCriada, setContaCriada] = useState(false);
   const [acessoAdmin, setAcessoAdmin] = useState(false);
 
   useEffect(() => {
@@ -179,29 +180,36 @@ function Index() {
   async function consultarHistoricoConta() {
     setContaErro("");
     setContaConsultou(false);
-    if (contaNome.trim().split(/\s+/).length < 2) {
+    if (contaNome.trim().split(/\\s+/).length < 2) {
       setContaErro("Informe seu nome completo, com nome e sobrenome.");
       return;
     }
-    if (![10, 11, 12, 13].includes(contaTelefone.replace(/\D/g, "").length)) {
+    if (![10, 11, 12, 13].includes(contaTelefone.replace(/\\D/g, "").length)) {
       setContaErro("Informe um celular válido com DDD.");
       return;
     }
     setContaCarregando(true);
     try {
-      const lista = await consultarHistoricoPorNomeTelefone(contaNome, contaTelefone);
-      setPedidos(lista);
+      const resultado = await criarContaCliente(contaNome, contaTelefone);
+      setPedidos(resultado.pedidos);
+      setContaCriada(true);
       setContaConsultou(true);
-      window.localStorage.setItem("lilhao-historico-cliente-v1", JSON.stringify({ nome: contaNome.trim(), telefone: contaTelefone.trim() }));
-      if (lista.length) setAba("pedidos");
-      else setContaErro("Ainda não encontramos pedidos com esse nome e celular. Confira os dados usados na compra.");
+      window.localStorage.setItem("lilhao-historico-cliente-v1", JSON.stringify({
+        id: resultado.cliente.id,
+        nome: resultado.cliente.nome,
+        telefone: resultado.cliente.telefone,
+      }));
+      if (resultado.pedidos.length) {
+        setAba("pedidos");
+      } else {
+        setContaErro("");
+      }
     } catch (error) {
-      setContaErro(error instanceof Error ? error.message : "Não foi possível consultar seu histórico agora.");
+      setContaErro(error instanceof Error ? error.message : "Não foi possível criar sua conta agora.");
     } finally {
       setContaCarregando(false);
     }
   }
-
 
   async function abrirMeusPedidos() {
     setCheckoutEtapa(0);
@@ -293,13 +301,13 @@ function Index() {
       {aba === "conta" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-8">
         <div className="flex items-center gap-3"><User className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Sua conta</p><h1 className="text-2xl font-black">Minha conta</h1></div></div>
         <div className="mt-5 rounded-2xl border border-[#ffc400]/25 bg-[#141617] p-5">
-          <p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">Acesso sem e-mail</p><h2 className="mt-2 text-2xl font-black">Seu histórico de compras</h2><p className="mt-2 text-sm leading-relaxed text-white/50">Informe o nome completo e o celular usados nos pedidos. Não precisa de e-mail, código ou senha.</p>
-          {contaErro && <div role="alert" className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 text-sm text-amber-100">{contaErro}</div>}
+          <p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">{contaCriada ? "Conta cadastrada" : "Primeiro acesso"}</p><h2 className="mt-2 text-2xl font-black">{contaCriada ? "Sua conta Lilhão" : "Criar minha conta"}</h2><p className="mt-2 text-sm leading-relaxed text-white/50">{contaCriada ? "Seu cadastro está salvo. Use os mesmos dados para consultar seu histórico e vincular novas compras." : "Cadastre-se com seu nome completo e celular. Não precisa de e-mail, código ou senha."}</p>
+          {contaErro && <div role="alert" className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 text-sm text-amber-100">{contaErro}</div>}{contaConsultou && contaCriada && pedidos.length === 0 && <div role="status" className="mt-4 rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-100">Conta criada com sucesso! Ainda não encontramos compras anteriores com esses dados. Seus próximos pedidos poderão ser vinculados a esta conta.</div>}
           <div className="mt-5 space-y-3">
             <label className="block text-xs font-bold text-white/55">Nome completo<input value={contaNome} onChange={e=>setContaNome(e.target.value)} autoComplete="name" placeholder="Seu nome e sobrenome" className={inputClass}/></label>
             <label className="block text-xs font-bold text-white/55">Celular / WhatsApp<input value={contaTelefone} onChange={e=>setContaTelefone(e.target.value)} inputMode="tel" autoComplete="tel" placeholder="(96) 99999-9999" className={inputClass}/></label>
-            <button onClick={consultarHistoricoConta} disabled={contaCarregando} className={actionClass+" w-full"}>{contaCarregando ? "Buscando seus pedidos..." : "Acessar meu histórico"} <ArrowRight className="ml-1 inline size-4"/></button>
-            <p className="text-[11px] leading-relaxed text-white/35">Use os mesmos dados informados na compra. Por segurança, as consultas têm limite de tentativas.</p>
+            <button onClick={consultarHistoricoConta} disabled={contaCarregando} className={actionClass+" w-full"}>{contaCarregando ? "Salvando sua conta..." : contaCriada ? "Atualizar meu histórico" : "Criar minha conta"} <ArrowRight className="ml-1 inline size-4"/></button>
+            <p className="text-[11px] leading-relaxed text-white/35">Informe dados verdadeiros. O nome e o celular serão usados para associar seu cadastro aos pedidos.</p>
           </div>
           {contaConsultou && pedidos.length === 0 && <p className="mt-4 text-sm text-white/60">Nenhum pedido encontrado para esses dados.</p>}
         </div>
