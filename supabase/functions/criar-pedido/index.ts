@@ -171,7 +171,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (body?.acao === "consultar_historico_nome_telefone") {
-      const nomeInformado = typeof body?.nome === "string" ? body.nome.trim().replace(/\\s+/g, " ") : "";
+      const nomeInformado = typeof body?.nome === "string" ? body.nome.trim().replace(/\s+/g, " ") : "";
       const telefoneInformado = typeof body?.telefone === "string" ? body.telefone.trim() : "";
       const digitosInformados = telefoneInformado.replace(/[^0-9]/g, "");
       const normalizarTelefone = (value: string) => {
@@ -205,7 +205,7 @@ Deno.serve(async (req: Request) => {
       if (historyError) throw historyError;
 
       const pedidos = (rows || []).filter((row: any) =>
-        String(row.nome_cliente || "").trim().replace(/\\s+/g, " ").toLocaleLowerCase("pt-BR") === nomeKey &&
+        String(row.nome_cliente || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR") === nomeKey &&
         normalizarTelefone(String(row.telefone || "")) === normalizarTelefone(telefoneInformado)
       );
       return new Response(JSON.stringify({ pedidos }), {
