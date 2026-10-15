@@ -435,10 +435,28 @@ Deno.serve(async (req: Request) => {
     if (data?.numero && nomePedido.split(" ").length >= 2 && [10, 11, 12, 13].includes(telefonePedido.replace(/[^0-9]/g, "").length)) {
       const { data: contas, error: contaError } = await admin.from("clientes").select("id,nome,telefone").limit(1000);
       if (contaError) throw contaError;
-      const conta = (contas || []).find((c: any) =>
+      let conta = (contas || []).find((c: any) =>
         String(c.nome || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR") === nomePedido.toLocaleLowerCase("pt-BR") &&
         normalizarTelefoneConta(String(c.telefone || "")) === normalizarTelefoneConta(telefonePedido)
       );
+
+      // First purchase: create the customer profile automatically from the
+      // checkout name and phone, then link this order to that profile.
+      if (!conta) {
+        const samePhone = (contas || []).find((c: any) =>
+          normalizarTelefoneConta(String(c.telefone || "")) === normalizarTelefoneConta(telefonePedido)
+        );
+        if (!samePhone) {
+          const { data: novoCliente, error: criarClienteError } = await admin
+            .from("clientes")
+            .insert({ nome: nomePedido, telefone: telefonePedido })
+            .select("id,nome,telefone")
+            .single();
+          if (criarClienteError) throw criarClienteError;
+          conta = novoCliente;
+        }
+      }
+
       if (conta) {
         const { error: linkError } = await admin.from("pedidos").update({ cliente_id: conta.id }).eq("numero", String(data.numero)).is("cliente_id", null);
         if (linkError) throw linkError;
