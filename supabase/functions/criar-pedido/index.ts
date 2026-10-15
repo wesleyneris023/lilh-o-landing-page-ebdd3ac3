@@ -170,6 +170,78 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (body?.acao === "criar_conta_cliente_nome_telefone") {
+      const nome = typeof body?.nome === "string" ? body.nome.trim().replace(/\\s+/g, " ") : "";
+      const telefone = typeof body?.telefone === "string" ? body.telefone.trim() : "";
+      const digitos = telefone.replace(/[^0-9]/g, "");
+      const normalizarTelefone = (value: string) => {
+        const digits = value.replace(/[^0-9]/g, "");
+        return (digits.length === 12 || digits.length === 13) && digits.startsWith("55") ? digits.slice(2) : digits;
+      };
+      if (nome.length < 3 || nome.split(" ").length < 2 || ![10, 11, 12, 13].includes(digitos.length)) {
+        return new Response(JSON.stringify({ error: "Informe nome completo e celular válido com DDD." }), {
+          status: 400, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
+        });
+      }
+
+      const rateKey = `create-account-ip:${await sha256Hex(`${key}:${clientIp}`)}`;
+      const { data: attempts, error: rateError } = await admin.rpc("registrar_tentativa_pedido", { p_rate_limit_key: rateKey });
+      if (rateError) throw rateError;
+      if (Number(attempts) > 10) {
+        return new Response(JSON.stringify({ error: "Muitas tentativas. Aguarde 10 minutos e tente novamente." }), {
+          status: 429, headers: { ...cors, "Content-Type": "application/json", "Retry-After": "600", "Cache-Control": "no-store" },
+        });
+      }
+
+      const nomeKey = nome.toLocaleLowerCase("pt-BR");
+      const telefoneKey = normalizarTelefone(telefone);
+      const { data: clientes, error: clientesError } = await admin.from("clientes").select("id,nome,telefone").limit(1000);
+      if (clientesError) throw clientesError;
+      const clienteTelefone = (clientes || []).find((c: any) => normalizarTelefone(String(c.telefone || "")) === telefoneKey);
+      if (clienteTelefone && String(clienteTelefone.nome || "").trim().replace(/\\s+/g, " ").toLocaleLowerCase("pt-BR") !== nomeKey) {
+        return new Response(JSON.stringify({ error: "Este celular já está cadastrado com outro nome. Procure o atendimento da lanchonete para corrigir o cadastro." }), {
+          status: 409, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
+        });
+      }
+
+      let cliente = clienteTelefone || null;
+      if (!cliente) {
+        const { data, error } = await admin.from("clientes").insert({ nome, telefone }).select("id,nome,telefone").single();
+        if (error) throw error;
+        cliente = data;
+      }
+
+      const { data: candidatos, error: pedidosError } = await admin
+        .from("pedidos")
+        .select("id,numero,nome_cliente,telefone,cliente_id")
+        .ilike("nome_cliente", nome)
+        .is("cliente_id", null)
+        .order("criado_em", { ascending: false })
+        .limit(500);
+      if (pedidosError) throw pedidosError;
+      const ids = (candidatos || []).filter((p: any) =>
+        String(p.nome_cliente || "").trim().replace(/\\s+/g, " ").toLocaleLowerCase("pt-BR") === nomeKey &&
+        normalizarTelefone(String(p.telefone || "")) === telefoneKey
+      ).map((p: any) => p.id);
+
+      if (ids.length) {
+        const { error: linkError } = await admin.from("pedidos").update({ cliente_id: cliente.id }).in("id", ids).is("cliente_id", null);
+        if (linkError) throw linkError;
+      }
+
+      const { data: rows, error: historyError } = await admin
+        .from("pedidos")
+        .select("numero,criado_em,nome_cliente,telefone,tipo_entrega,pagamento,pagamento_status,status,subtotal,taxa_entrega,total,pedido_itens(id,produto_id,nome_produto,preco_unitario,quantidade,total)")
+        .eq("cliente_id", cliente.id)
+        .order("criado_em", { ascending: false })
+        .limit(100);
+      if (historyError) throw historyError;
+
+      return new Response(JSON.stringify({ cliente: { id: cliente.id, nome: cliente.nome, telefone: cliente.telefone }, pedidos: rows || [] }), {
+        status: 200, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
+      });
+    }
+
     if (body?.acao === "consultar_historico_nome_telefone") {
       const nomeInformado = typeof body?.nome === "string" ? body.nome.trim().replace(/\s+/g, " ") : "";
       const telefoneInformado = typeof body?.telefone === "string" ? body.telefone.trim() : "";
