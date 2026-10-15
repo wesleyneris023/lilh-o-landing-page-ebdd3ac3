@@ -171,7 +171,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (body?.acao === "criar_conta_cliente_nome_telefone") {
-      const nome = typeof body?.nome === "string" ? body.nome.trim().replace(/\\s+/g, " ") : "";
+      const nome = typeof body?.nome === "string" ? body.nome.trim().replace(/\s+/g, " ") : "";
       const telefone = typeof body?.telefone === "string" ? body.telefone.trim() : "";
       const digitos = telefone.replace(/[^0-9]/g, "");
       const normalizarTelefone = (value: string) => {
@@ -198,7 +198,7 @@ Deno.serve(async (req: Request) => {
       const { data: clientes, error: clientesError } = await admin.from("clientes").select("id,nome,telefone").limit(1000);
       if (clientesError) throw clientesError;
       const clienteTelefone = (clientes || []).find((c: any) => normalizarTelefone(String(c.telefone || "")) === telefoneKey);
-      if (clienteTelefone && String(clienteTelefone.nome || "").trim().replace(/\\s+/g, " ").toLocaleLowerCase("pt-BR") !== nomeKey) {
+      if (clienteTelefone && String(clienteTelefone.nome || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR") !== nomeKey) {
         return new Response(JSON.stringify({ error: "Este celular já está cadastrado com outro nome. Procure o atendimento da lanchonete para corrigir o cadastro." }), {
           status: 409, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
         });
@@ -220,7 +220,7 @@ Deno.serve(async (req: Request) => {
         .limit(500);
       if (pedidosError) throw pedidosError;
       const ids = (candidatos || []).filter((p: any) =>
-        String(p.nome_cliente || "").trim().replace(/\\s+/g, " ").toLocaleLowerCase("pt-BR") === nomeKey &&
+        String(p.nome_cliente || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR") === nomeKey &&
         normalizarTelefone(String(p.telefone || "")) === telefoneKey
       ).map((p: any) => p.id);
 
