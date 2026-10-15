@@ -179,7 +179,7 @@ Deno.serve(async (req: Request) => {
         return (digits.length === 12 || digits.length === 13) && digits.startsWith("55") ? digits.slice(2) : digits;
       };
 
-      if (!/^LH-\\d{8}-\\d{4,}$/.test(numero) || ![10, 11, 12, 13].includes(digitosInformados.length)) {
+      if (!/^LH-\d{8}-\d{4,}$/.test(numero) || ![10, 11, 12, 13].includes(digitosInformados.length)) {
         return new Response(JSON.stringify({ error: "Não encontramos um pedido com esses dados. Confira o número e o celular." }), {
           status: 404,
           headers: { ...cors, "Content-Type": "application/json" },
