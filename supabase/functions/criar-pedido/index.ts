@@ -520,6 +520,7 @@ Deno.serve(async (req: Request) => {
       headers: { ...cors, "Content-Type": "application/json" },
     });
   } catch (error) {
+    console.error("[criar-pedido] Falha ao processar ação", error);
     return new Response(JSON.stringify({
       error: error instanceof Error ? error.message : "Erro ao processar pedido.",
     }), {
