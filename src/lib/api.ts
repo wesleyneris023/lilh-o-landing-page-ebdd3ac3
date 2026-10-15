@@ -272,7 +272,14 @@ export async function criarContaCliente(nome: string, telefone: string): Promise
     body: JSON.stringify({ acao: "criar_conta_cliente_nome_telefone", nome: nomeNormalizado, telefone: telefoneNormalizado }),
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body?.error || "Não foi possível criar sua conta.");
+  if (!response.ok) {
+    const erro = body?.error;
+    // Avoid rendering an object as "[object Object]" in the customer form.
+    const mensagem = typeof erro === "string" ? erro
+      : erro && typeof erro === "object" && typeof erro.message === "string" ? erro.message
+      : "Não foi possível criar sua conta agora. Tente novamente em instantes.";
+    throw new Error(mensagem);
+  }
   if (!body?.cliente?.id) throw new Error("O cadastro não foi confirmado. Tente novamente.");
   return {
     cliente: body.cliente,
