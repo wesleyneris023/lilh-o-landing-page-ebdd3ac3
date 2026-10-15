@@ -497,30 +497,30 @@ function Index() {
         <section className="border-t border-white/10 bg-[#111314] px-4 py-8 text-center"><p className="text-xs font-black uppercase tracking-[.2em] text-[#ffc400]">Estamos por aqui</p><h2 className="mt-2 text-2xl font-black">Lilhão, sabor que conquista</h2><div className="mt-5 flex flex-wrap justify-center gap-4 text-sm text-white/50"><span><Clock className="mr-1 inline size-4 text-[#ffc400]"/>{horarioAbertura} às {horarioFechamento}</span><span><Phone className="mr-1 inline size-4 text-[#ffc400]"/>Pedidos</span></div></section></main>}
 
       {aba === "pedidos" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-6">
-      <div className="flex items-center gap-3"><ClipboardList className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Acompanhe sua compra</p><h1 className="text-2xl font-black">Rastrear pedido</h1></div></div>
-      <p className="mt-2 text-sm text-white/55">Informe o número do pedido e o celular usado na compra. Não precisa criar conta nem entrar pelo e-mail.</p>
-      <form onSubmit={consultarPedidoRastreio} className="mt-5 space-y-4 rounded-2xl border border-white/10 bg-[#141617] p-4 sm:p-5">
-        <label className="block text-sm font-bold">Número do pedido
-          <input required value={consultaNumero} onChange={e => setConsultaNumero(e.target.value.toUpperCase())} placeholder="LH-20261014-0001" autoCapitalize="characters" className={inputClass}/>
-        </label>
-        <label className="block text-sm font-bold">Celular usado na compra
-          <input required value={consultaTelefone} onChange={e => setConsultaTelefone(e.target.value)} placeholder="DDD + número" inputMode="tel" autoComplete="tel" className={inputClass}/>
-        </label>
-        {consultaErro && <p role="alert" className="rounded-lg border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-200">{consultaErro}</p>}
-        <button type="submit" disabled={consultandoPedido} className={`${actionClass} w-full`}>{consultandoPedido ? "Consultando..." : "Consultar pedido"} <Search className="ml-1 inline size-4"/></button>
-        <p className="text-xs text-white/40">Por segurança, só mostramos o pedido quando o número e o telefone correspondem.</p>
-      </form>
-      {consultaPedido && <article className="mt-5 rounded-2xl border border-[#ffc400]/30 bg-[#141617] p-4 sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs text-white/45">Pedido encontrado</p><h2 className="mt-1 text-lg font-black">{consultaPedido.numero}</h2><p className="mt-1 text-sm text-white/50">{new Date(consultaPedido.criadoEm).toLocaleString("pt-BR")}</p></div><span className="rounded-full bg-[#ffc400]/10 px-3 py-1.5 text-xs font-bold text-[#ffc400]">{consultaPedido.status}</span></div>
-        <div className="mt-4 space-y-2 border-t border-white/10 pt-4">{consultaPedido.itens.map((item, index) => <div key={`${item.id}-${index}`} className="flex justify-between gap-3 text-sm"><span>{item.quantidade}x {item.nome}</span><span className="whitespace-nowrap">{dinheiro(item.preco * item.quantidade)}</span></div>)}</div>
-        <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-4"><span className="text-sm text-white/55">{consultaPedido.entrega} • {consultaPedido.pagamento}</span><strong className="text-lg text-[#ffc400]">{dinheiro(consultaPedido.total)}</strong></div>
-        <p className="mt-3 text-xs text-white/45">Situação do pagamento: {consultaPedido.pagamentoStatus === "aprovado" ? "Aprovado" : consultaPedido.pagamentoStatus === "recusado" ? "Recusado" : consultaPedido.pagamentoStatus === "cancelado" ? "Cancelado" : "Pendente"}</p>
-        <button type="button" onClick={() => { setConsultaPedido(null); setConsultaErro(""); }} className={`${quietClass} mt-4 w-full`}>Consultar outro pedido</button>
-      </article>}
-      <button onClick={() => setAba("inicio")} className={`${quietClass} mt-4 w-full`}>Voltar ao cardápio</button>
-    </main>}
+        <div className="flex items-center gap-3"><ClipboardList className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Histórico</p><h1 className="text-2xl font-black">Meus pedidos</h1></div></div>
+        <p className="mt-2 text-sm text-white/55">Veja os pedidos vinculados à sua sessão. Para localizar um pedido pelo número e celular, acesse Minha conta.</p>
+        {pedidos.length ? <div className="mt-5 space-y-3">{pedidos.map((pedido) => <article key={pedido.numero} className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs text-white/45">Pedido</p><h2 className="font-black">{pedido.numero}</h2><p className="mt-1 text-xs text-white/45">{new Date(pedido.criadoEm).toLocaleString("pt-BR")}</p></div><span className="rounded-full bg-[#ffc400]/10 px-3 py-1.5 text-xs font-bold text-[#ffc400]">{pedido.status}</span></div><div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3"><span className="text-sm text-white/55">{pedido.itens.reduce((total, item) => total + item.quantidade, 0)} item(ns)</span><strong className="text-[#ffc400]">{dinheiro(pedido.total)}</strong></div></article>)}</div> : <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-6 text-center"><ClipboardList className="mx-auto size-10 text-white/20"/><h2 className="mt-3 font-black">Nenhum pedido no histórico</h2><p className="mt-1 text-sm text-white/45">Entre na sua conta ou consulte pelo número e celular na área Minha conta.</p></div>}
+        <button onClick={() => { setAba("conta"); setCheckoutEtapa(0); }} className={`${actionClass} mt-4 w-full`}>Ir para Minha conta</button>
+      </main>}
       {aba === "conta" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-8">
         <div className="flex items-center gap-3"><User className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Sua conta</p><h1 className="text-2xl font-black">Minha conta</h1></div></div>
+        <div className="mt-5 rounded-2xl border border-[#ffc400]/25 bg-[#141617] p-5">
+          <p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">Consulta rápida</p><h2 className="mt-2 text-xl font-black">Acompanhar pedido</h2><p className="mt-2 text-sm leading-relaxed text-white/50">Digite o número do pedido e o celular usado na compra. Não precisa entrar por e-mail nem criar conta.</p>
+          <form onSubmit={consultarPedidoRastreio} className="mt-4 space-y-3">
+            <label className="block text-xs font-bold text-white/55">Número do pedido<input required value={consultaNumero} onChange={e => setConsultaNumero(e.target.value.toUpperCase())} placeholder="LH-20261014-0001" autoCapitalize="characters" className={inputClass}/></label>
+            <label className="block text-xs font-bold text-white/55">Celular usado na compra<input required value={consultaTelefone} onChange={e => setConsultaTelefone(e.target.value)} placeholder="DDD + número" inputMode="tel" autoComplete="tel" className={inputClass}/></label>
+            {consultaErro && <p role="alert" className="rounded-lg border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-200">{consultaErro}</p>}
+            <button type="submit" disabled={consultandoPedido} className={`${actionClass} w-full`}>{consultandoPedido ? "Consultando..." : "Consultar pedido"} <Search className="ml-1 inline size-4"/></button>
+            <p className="text-[11px] text-white/35">Por segurança, o pedido só aparece quando número e celular correspondem.</p>
+          </form>
+          {consultaPedido && <article className="mt-4 rounded-xl border border-[#ffc400]/30 bg-black/20 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs text-white/45">Pedido encontrado</p><h3 className="mt-1 font-black">{consultaPedido.numero}</h3><p className="mt-1 text-xs text-white/50">{new Date(consultaPedido.criadoEm).toLocaleString("pt-BR")}</p></div><span className="rounded-full bg-[#ffc400]/10 px-3 py-1.5 text-xs font-bold text-[#ffc400]">{consultaPedido.status}</span></div>
+            <div className="mt-3 space-y-2 border-t border-white/10 pt-3">{consultaPedido.itens.map((item, index) => <div key={`${item.id}-${index}`} className="flex justify-between gap-3 text-sm"><span>{item.quantidade}x {item.nome}</span><span className="whitespace-nowrap">{dinheiro(item.preco * item.quantidade)}</span></div>)}</div>
+            <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3"><span className="text-xs text-white/50">{consultaPedido.entrega} • {consultaPedido.pagamento}</span><strong className="text-[#ffc400]">{dinheiro(consultaPedido.total)}</strong></div>
+            <p className="mt-2 text-xs text-white/45">Pagamento: {consultaPedido.pagamentoStatus === "aprovado" ? "Aprovado" : consultaPedido.pagamentoStatus === "recusado" ? "Recusado" : consultaPedido.pagamentoStatus === "cancelado" ? "Cancelado" : "Pendente"}</p>
+            <button type="button" onClick={() => { setConsultaPedido(null); setConsultaErro(""); }} className={`${quietClass} mt-3 w-full`}>Consultar outro pedido</button>
+          </article>}
+        </div>
         {sessaoCarregando ? <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-6 text-center text-white/50">Carregando sua conta...</div> : cliente ? <div className="mt-5 space-y-4">
           <div className="rounded-2xl border border-white/10 bg-[#141617] p-5"><p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">Conta verificada</p><h2 className="mt-2 text-2xl font-black">{cliente.nome}</h2><p className="mt-1 text-sm text-white/50">{cliente.telefone}</p><div className="mt-5 grid gap-3 sm:grid-cols-2"><button onClick={abrirMeusPedidos} className={actionClass+" w-full"}>Meus pedidos <ArrowRight className="ml-1 inline size-4"/></button><button onClick={sairDaConta} disabled={contaCarregando} className={quietClass+" w-full"}>Sair da conta</button></div></div>
           <div className="rounded-2xl border border-white/10 bg-[#141617] p-5"><h3 className="font-black">Seus dados</h3><p className="mt-2 text-sm text-white/50">Seus pedidos agora ficam vinculados à sua conta, e não apenas a este navegador.</p></div>
