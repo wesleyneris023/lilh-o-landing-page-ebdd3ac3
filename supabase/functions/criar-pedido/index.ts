@@ -426,7 +426,7 @@ Deno.serve(async (req: Request) => {
 
     // If the customer has already created a name-and-phone account, attach this
     // new order to that profile without changing any existing order ownership.
-    const nomePedido = typeof body?.nome === "string" ? body.nome.trim().replace(/\\s+/g, " ") : "";
+    const nomePedido = typeof body?.nome === "string" ? body.nome.trim().replace(/\s+/g, " ") : "";
     const telefonePedido = String(verifiedPhone || body?.telefone || "");
     const normalizarTelefoneConta = (value: string) => {
       const digits = value.replace(/[^0-9]/g, "");
@@ -436,7 +436,7 @@ Deno.serve(async (req: Request) => {
       const { data: contas, error: contaError } = await admin.from("clientes").select("id,nome,telefone").limit(1000);
       if (contaError) throw contaError;
       const conta = (contas || []).find((c: any) =>
-        String(c.nome || "").trim().replace(/\\s+/g, " ").toLocaleLowerCase("pt-BR") === nomePedido.toLocaleLowerCase("pt-BR") &&
+        String(c.nome || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR") === nomePedido.toLocaleLowerCase("pt-BR") &&
         normalizarTelefoneConta(String(c.telefone || "")) === normalizarTelefoneConta(telefonePedido)
       );
       if (conta) {
