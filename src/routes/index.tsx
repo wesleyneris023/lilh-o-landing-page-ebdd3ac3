@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Clock, Copy,
 import heroBurger from "@/assets/hero-burger.jpg";
 
 import { categorias, dinheiro, lerProdutos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
-import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente, consultarStatusPagamentoPix, ehAdmin, consultarPedidoPorNumeroTelefone, consultarHistoricoPorNomeTelefone } from "@/lib/api";
+import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, consultarStatusPagamentoPix, ehAdmin, consultarHistoricoPorNomeTelefone } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 function categoriaIcone(cat: string) {
   switch (cat) {
@@ -39,11 +39,6 @@ function Index() {
   const [troco, setTroco] = useState("");
   const [observacao, setObservacao] = useState("");
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [consultaNumero, setConsultaNumero] = useState("");
-  const [consultaTelefone, setConsultaTelefone] = useState("");
-  const [consultaPedido, setConsultaPedido] = useState<Pedido | null>(null);
-  const [consultaErro, setConsultaErro] = useState("");
-  const [consultandoPedido, setConsultandoPedido] = useState(false);
   const [pedidoAtual, setPedidoAtual] = useState<Pedido | null>(null);
   const [aba, setAba] = useState<"inicio" | "pedidos" | "conta">("inicio");
   const [menu, setMenu] = useState<Produto[]>(lerProdutos());
@@ -207,20 +202,6 @@ function Index() {
     }
   }
 
-  async function consultarPedidoRastreio(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setConsultandoPedido(true);
-    setConsultaErro("");
-    setConsultaPedido(null);
-    try {
-      const resultado = await consultarPedidoPorNumeroTelefone(consultaNumero, consultaTelefone);
-      setConsultaPedido(resultado);
-    } catch (error) {
-      setConsultaErro(error instanceof Error ? error.message : "Não foi possível consultar o pedido agora.");
-    } finally {
-      setConsultandoPedido(false);
-    }
-  }
 
   async function abrirMeusPedidos() {
     setCheckoutEtapa(0);
