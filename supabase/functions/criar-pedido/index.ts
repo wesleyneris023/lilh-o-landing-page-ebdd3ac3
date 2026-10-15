@@ -424,6 +424,27 @@ Deno.serve(async (req: Request) => {
 
     if (error) throw error;
 
+    // If the customer has already created a name-and-phone account, attach this
+    // new order to that profile without changing any existing order ownership.
+    const nomePedido = typeof body?.nome === "string" ? body.nome.trim().replace(/\\s+/g, " ") : "";
+    const telefonePedido = String(verifiedPhone || body?.telefone || "");
+    const normalizarTelefoneConta = (value: string) => {
+      const digits = value.replace(/[^0-9]/g, "");
+      return (digits.length === 12 || digits.length === 13) && digits.startsWith("55") ? digits.slice(2) : digits;
+    };
+    if (data?.numero && nomePedido.split(" ").length >= 2 && [10, 11, 12, 13].includes(telefonePedido.replace(/[^0-9]/g, "").length)) {
+      const { data: contas, error: contaError } = await admin.from("clientes").select("id,nome,telefone").limit(1000);
+      if (contaError) throw contaError;
+      const conta = (contas || []).find((c: any) =>
+        String(c.nome || "").trim().replace(/\\s+/g, " ").toLocaleLowerCase("pt-BR") === nomePedido.toLocaleLowerCase("pt-BR") &&
+        normalizarTelefoneConta(String(c.telefone || "")) === normalizarTelefoneConta(telefonePedido)
+      );
+      if (conta) {
+        const { error: linkError } = await admin.from("pedidos").update({ cliente_id: conta.id }).eq("numero", String(data.numero)).is("cliente_id", null);
+        if (linkError) throw linkError;
+      }
+    }
+
     if (body.pagamento === "PIX") {
       // Idempotent retry: reuse the PIX already created for this order.
       if (data?.idempotente === true) {
