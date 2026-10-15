@@ -256,6 +256,30 @@ export async function consultarPedidoPorNumeroTelefone(numero: string, telefone:
   return mapPedido(body.pedido);
 }
 
+export async function criarContaCliente(nome: string, telefone: string): Promise<{ cliente: { id: string; nome: string; telefone: string }; pedidos: Pedido[] }> {
+  const nomeNormalizado = nome.trim().replace(/\\s+/g, " ");
+  const telefoneNormalizado = telefone.trim();
+  if (nomeNormalizado.split(" ").length < 2) throw new Error("Informe seu nome completo, com nome e sobrenome.");
+  if (![10, 11, 12, 13].includes(telefoneNormalizado.replace(/\\D/g, "").length)) {
+    throw new Error("Informe um celular válido com DDD.");
+  }
+  const response = await fetch(ORDER_FUNCTION_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || "",
+    },
+    body: JSON.stringify({ acao: "criar_conta_cliente_nome_telefone", nome: nomeNormalizado, telefone: telefoneNormalizado }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body?.error || "Não foi possível criar sua conta.");
+  if (!body?.cliente?.id) throw new Error("O cadastro não foi confirmado. Tente novamente.");
+  return {
+    cliente: body.cliente,
+    pedidos: (Array.isArray(body?.pedidos) ? body.pedidos : []).map(mapPedido),
+  };
+}
+
 export async function consultarHistoricoPorNomeTelefone(nome: string, telefone: string): Promise<Pedido[]> {
   const nomeNormalizado = nome.trim().replace(/\s+/g, " ");
   const telefoneNormalizado = telefone.trim();
