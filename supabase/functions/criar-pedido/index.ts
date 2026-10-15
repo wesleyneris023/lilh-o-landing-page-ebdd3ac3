@@ -539,8 +539,9 @@ Deno.serve(async (req: Request) => {
     });
   } catch (error) {
     console.error("[criar-pedido] Falha ao processar ação", error);
+    const detalhe = error instanceof Error ? error.message : String(error ?? "");
     return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : "Erro ao processar pedido.",
+      error: detalhe || "Erro ao processar pedido.",
     }), {
       status: 400,
       headers: { ...cors, "Content-Type": "application/json" },
