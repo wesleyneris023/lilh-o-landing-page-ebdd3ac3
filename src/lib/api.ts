@@ -129,6 +129,7 @@ function mapPedido(row: any): Pedido {
     entrega: row.tipo_entrega === "retirada" ? "Retirada no local" : "Entrega",
     endereco: formatEndereco(row.endereco),
     pagamento: row.pagamento,
+    pagamentoStatus: row.pagamento_status ?? "pendente",
     observacao: row.observacao || "",
     subtotal: Number(row.subtotal),
     taxa: Number(row.taxa_entrega),
@@ -139,8 +140,16 @@ function mapPedido(row: any): Pedido {
 
 function normalizarTelefone(telefone: string) {
   const digits = telefone.replace(/\D/g, "");
-  if (digits.startsWith("55")) return `+${digits}`;
-  return `+55${digits}`;
+  // A Brazilian local number can begin with area code 55. Treat it as an
+  // international number only when it already includes country code 55
+  // (12 or 13 digits total); otherwise preserve the local area code.
+  if ((digits.length === 12 || digits.length === 13) && digits.startsWith("55")) {
+    return `+${digits}`;
+  }
+  if (digits.length === 10 || digits.length === 11) {
+    return `+55${digits}`;
+  }
+  throw new Error("Informe um telefone brasileiro válido com DDD.");
 }
 
 export async function carregarClienteAtual(): Promise<{ id: string; nome: string; telefone: string } | null> {
@@ -155,22 +164,17 @@ export async function carregarClienteAtual(): Promise<{ id: string; nome: string
   return data;
 }
 
-export async function enviarCodigoTelefone(telefone: string) {
-  const phone = normalizarTelefone(telefone);
-  const { error } = await supabase.auth.signInWithOtp({ phone });
-  if (error) throw error;
-  return phone;
-}
-
-export async function confirmarCodigoTelefone(telefone: string, codigo: string) {
-  const phone = normalizarTelefone(telefone);
-  const { data, error } = await supabase.auth.verifyOtp({
-    phone,
-    token: codigo.trim(),
-    type: "sms",
+export async function enviarLinkAcessoEmail(email: string, nome: string, telefone: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const { error } = await supabase.auth.signInWithOtp({
+    email: normalizedEmail,
+    options: {
+      emailRedirectTo: window.location.origin,
+      data: { nome: nome.trim(), telefone: telefone.trim() },
+    },
   });
   if (error) throw error;
-  return { ...data, phone };
+  return normalizedEmail;
 }
 
 export async function sincronizarClienteAtual(nome: string, telefone: string) {
@@ -224,13 +228,93 @@ export async function consultarStatusPagamentoPix(numero: string) {
   };
 }
 
+export async function consultarPedidoPorNumeroTelefone(numero: string, telefone: string): Promise<Pedido> {
+  const numeroNormalizado = numero.trim().toUpperCase();
+  const telefoneNormalizado = telefone.trim();
+  if (!/^LH-\d{8}-\d{4,}$/.test(numeroNormalizado)) {
+    throw new Error("Informe o número completo do pedido, por exemplo LH-20261014-0001.");
+  }
+  if (telefoneNormalizado.replace(/\D/g, "").length < 10) {
+    throw new Error("Informe o celular com DDD usado na compra.");
+  }
+  const response = await fetch(ORDER_FUNCTION_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || "",
+    },
+    body: JSON.stringify({
+      acao: "consultar_pedido_por_telefone",
+      numero: numeroNormalizado,
+      telefone: telefoneNormalizado,
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (response.status === 404) throw new Error("Não encontramos um pedido com esses dados. Confira o número e o celular.");
+  if (!response.ok) throw new Error(body?.error || "Não foi possível consultar o pedido agora.");
+  if (!body?.pedido) throw new Error("Não encontramos um pedido com esses dados. Confira o número e o celular.");
+  return mapPedido(body.pedido);
+}
+
+export async function criarContaCliente(nome: string, telefone: string): Promise<{ cliente: { id: string; nome: string; telefone: string }; pedidos: Pedido[] }> {
+  const nomeNormalizado = nome.trim().replace(/\s+/g, " ");
+  const telefoneNormalizado = telefone.trim();
+  if (nomeNormalizado.split(" ").length < 2) throw new Error("Informe seu nome completo, com nome e sobrenome.");
+  if (![10, 11, 12, 13].includes(telefoneNormalizado.replace(/\D/g, "").length)) {
+    throw new Error("Informe um celular válido com DDD.");
+  }
+  const response = await fetch(ORDER_FUNCTION_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || "",
+    },
+    body: JSON.stringify({ acao: "criar_conta_cliente_nome_telefone", nome: nomeNormalizado, telefone: telefoneNormalizado }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const erro = body?.error;
+    // Avoid rendering an object as "[object Object]" in the customer form.
+    const mensagem = typeof erro === "string" ? erro
+      : erro && typeof erro === "object" && typeof erro.message === "string" ? erro.message
+      : "Não foi possível criar sua conta agora. Tente novamente em instantes.";
+    throw new Error(mensagem);
+  }
+  if (!body?.cliente?.id) throw new Error("O cadastro não foi confirmado. Tente novamente.");
+  return {
+    cliente: body.cliente,
+    pedidos: (Array.isArray(body?.pedidos) ? body.pedidos : []).map(mapPedido),
+  };
+}
+
+export async function consultarHistoricoPorNomeTelefone(nome: string, telefone: string): Promise<Pedido[]> {
+  const nomeNormalizado = nome.trim().replace(/\s+/g, " ");
+  const telefoneNormalizado = telefone.trim();
+  if (nomeNormalizado.length < 3) throw new Error("Informe seu nome completo.");
+  if (nomeNormalizado.split(" ").length < 2) throw new Error("Informe nome e sobrenome.");
+  if (![10, 11, 12, 13].includes(telefoneNormalizado.replace(/\D/g, "").length)) {
+    throw new Error("Informe um celular válido com DDD.");
+  }
+  const response = await fetch(ORDER_FUNCTION_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || "",
+    },
+    body: JSON.stringify({ acao: "consultar_historico_nome_telefone", nome: nomeNormalizado, telefone: telefoneNormalizado }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body?.error || "Não foi possível consultar o histórico.");
+  return (Array.isArray(body?.pedidos) ? body.pedidos : []).map(mapPedido);
+}
+
 export async function carregarPedidosCliente(): Promise<Pedido[]> {
   const { data: { session } } = await supabase.auth.getSession();
 
   if (session?.user) {
     const { data, error } = await supabase
       .from("pedidos")
-      .select("numero,criado_em,nome_cliente,telefone,tipo_entrega,endereco,pagamento,observacao,subtotal,taxa_entrega,total,status,pedido_itens(id,produto_id,nome_produto,preco_unitario,quantidade,total)")
+      .select("numero,criado_em,nome_cliente,telefone,tipo_entrega,endereco,pagamento,pagamento_status,observacao,subtotal,taxa_entrega,total,status,pedido_itens(id,produto_id,nome_produto,preco_unitario,quantidade,total)")
       .order("criado_em", { ascending: false });
     if (error) throw error;
     return (data || []).map(mapPedido);
@@ -274,6 +358,7 @@ export async function carregarPedidosAdmin(): Promise<Pedido[]> {
     entrega: p.tipo_entrega === "retirada" ? "Retirada no local" : "Entrega",
     endereco: formatEndereco(p.endereco),
     pagamento: p.pagamento,
+    pagamentoStatus: p.pagamento_status ?? "pendente",
     observacao: p.observacao || "",
     subtotal: Number(p.subtotal),
     taxa: Number(p.taxa_entrega),
@@ -289,7 +374,19 @@ function formatEndereco(endereco: any) {
 }
 
 export async function atualizarStatusPedido(numero: string, status: string) {
+  const permitidos = ["Recebido", "Em preparo", "Pronto", "Saiu para entrega", "Concluído", "Cancelado"];
+  if (!permitidos.includes(status)) throw new Error("Status de pedido inválido.");
   const { error } = await supabase.from("pedidos").update({ status, atualizado_em: new Date().toISOString() }).eq("numero", numero);
+  if (error) throw error;
+}
+
+export async function atualizarPagamentoPedido(numero: string, pagamentoStatus: "pendente" | "aprovado") {
+  const { data, error: leituraErro } = await supabase.from("pedidos").select("pagamento,status").eq("numero", numero).maybeSingle();
+  if (leituraErro) throw leituraErro;
+  if (!data) throw new Error("Pedido não encontrado.");
+  if (data.pagamento === "PIX") throw new Error("O status do PIX é atualizado pelo Mercado Pago.");
+  if (data.status === "Cancelado") throw new Error("Pedidos cancelados não podem ser marcados como pagos.");
+  const { error } = await supabase.from("pedidos").update({ pagamento_status: pagamentoStatus, atualizado_em: new Date().toISOString() }).eq("numero", numero);
   if (error) throw error;
 }
 

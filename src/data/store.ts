@@ -1,6 +1,6 @@
 export type Produto = { id: string; nome: string; descricao: string; preco: number; categoria: string; imagem?: string; selo?: string };
 export type ItemSacola = Produto & { quantidade: number };
-export type Pedido = { numero: string; criadoEm: string; itens: ItemSacola[]; nome: string; telefone: string; entrega: string; endereco: string; pagamento: string; observacao: string; subtotal: number; taxa: number; total: number; status: string };
+export type Pedido = { numero: string; criadoEm: string; itens: ItemSacola[]; nome: string; telefone: string; entrega: string; endereco: string; pagamento: string; pagamentoStatus?: "pendente" | "aprovado" | "recusado" | "cancelado"; observacao: string; subtotal: number; taxa: number; total: number; status: string };
 
 import prodBurger from "@/assets/prod-burger.jpg";
 import prodHotdog from "@/assets/prod-hotdog.jpg";

@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Clock, Copy,
 import heroBurger from "@/assets/hero-burger.jpg";
 
 import { categorias, dinheiro, lerProdutos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
-import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, carregarPedidosCliente, consultarStatusPagamentoPix, carregarClienteAtual, enviarCodigoTelefone, confirmarCodigoTelefone, sincronizarClienteAtual, sairCliente } from "@/lib/api";
+import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, consultarStatusPagamentoPix, ehAdmin, criarContaCliente } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 function categoriaIcone(cat: string) {
   switch (cat) {
@@ -67,14 +67,13 @@ function Index() {
   const [configCarregada, setConfigCarregada] = useState(false);
   const [agoraTick, setAgoraTick] = useState(() => Date.now());
   const [formasPagamento, setFormasPagamento] = useState<string[]>([]);
-  const [cliente, setCliente] = useState<{ id: string; nome: string; telefone: string } | null>(null);
   const [contaTelefone, setContaTelefone] = useState("");
   const [contaNome, setContaNome] = useState("");
-  const [contaCodigo, setContaCodigo] = useState("");
-  const [contaEtapa, setContaEtapa] = useState<"dados" | "codigo">("dados");
   const [contaCarregando, setContaCarregando] = useState(false);
   const [contaErro, setContaErro] = useState("");
-  const [sessaoCarregando, setSessaoCarregando] = useState(true);
+  const [contaConsultou, setContaConsultou] = useState(false);
+  const [contaCriada, setContaCriada] = useState(false);
+  const [acessoAdmin, setAcessoAdmin] = useState(false);
 
   useEffect(() => {
     let ativo = true;
@@ -129,38 +128,18 @@ function Index() {
 
   useEffect(() => {
     let ativo = true;
-    const carregarSessaoCliente = async () => {
+    const verificarAcessoAdmin = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          const perfil = await carregarClienteAtual();
-          if (ativo) setCliente(perfil);
-        } else if (ativo) {
-          setCliente(null);
-        }
+        const autorizado = await ehAdmin();
+        if (ativo) setAcessoAdmin(autorizado);
       } catch {
-        if (ativo) setCliente(null);
-      } finally {
-        if (ativo) setSessaoCarregando(false);
+        if (ativo) setAcessoAdmin(false);
       }
     };
-    carregarSessaoCliente();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        setCliente(null);
-        return;
-      }
-      window.setTimeout(async () => {
-        try {
-          const perfil = await carregarClienteAtual();
-          if (ativo) setCliente(perfil);
-        } catch {
-          if (ativo) setCliente(null);
-        }
-      }, 0);
+    void verificarAcessoAdmin();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      window.setTimeout(() => { void verificarAcessoAdmin(); }, 0);
     });
-
     return () => {
       ativo = false;
       subscription.unsubscribe();
@@ -168,29 +147,18 @@ function Index() {
   }, []);
 
   useEffect(() => {
-    if (!cliente) return;
-    setNome(cliente.nome);
-    setTelefone(cliente.telefone);
-  }, [cliente]);
-
-  useEffect(() => {
-    if (aba !== "pedidos" || checkoutEtapa !== 0) return;
-    let ativo = true;
-    const atualizarHistorico = async () => {
-      try {
-        const lista = await carregarPedidosCliente();
-        if (ativo) setPedidos(lista.length ? lista : pedidoAtual ? [pedidoAtual] : []);
-      } catch {
-        if (ativo && pedidoAtual) setPedidos([pedidoAtual]);
+    try {
+      const saved = window.localStorage.getItem("lilhao-historico-cliente-v1");
+      if (saved) {
+        const parsed = JSON.parse(saved) as { nome?: string; telefone?: string };
+        if (parsed.nome) setContaNome(parsed.nome);
+        if (parsed.telefone) setContaTelefone(parsed.telefone);
       }
-    };
-    atualizarHistorico();
-    const timer = window.setInterval(atualizarHistorico, 15000);
-    return () => {
-      ativo = false;
-      window.clearInterval(timer);
-    };
-  }, [aba, checkoutEtapa, pedidoAtual?.numero]);
+    } catch {
+      window.localStorage.removeItem("lilhao-historico-cliente-v1");
+    }
+  }, []);
+
 
   const filtrados = useMemo(() => menu.filter((p) => (categoria === "Todos" || p.categoria === categoria) && `${p.nome} ${p.descricao}`.toLowerCase().includes(busca.toLowerCase())), [categoria, busca, menu]);
   const quantidade = sacola.reduce((t, i) => t + i.quantidade, 0);
@@ -209,63 +177,35 @@ function Index() {
     return abertura < fechamento ? minutos >= abertura && minutos < fechamento : minutos >= abertura || minutos < fechamento;
   }, [agoraTick, configCarregada, aceitaPedidos, horarioAbertura, horarioFechamento]);
  
-  async function enviarCodigoConta() {
+  async function consultarHistoricoConta() {
     setContaErro("");
-    if (contaNome.trim().length < 2) {
-      setContaErro("Informe seu nome.");
+    setContaConsultou(false);
+    if (contaNome.trim().split(/\s+/).length < 2) {
+      setContaErro("Informe seu nome completo, com nome e sobrenome.");
       return;
     }
-    if (contaTelefone.replace(/\D/g, "").length < 10) {
+    if (![10, 11, 12, 13].includes(contaTelefone.replace(/\D/g, "").length)) {
       setContaErro("Informe um celular válido com DDD.");
       return;
     }
     setContaCarregando(true);
     try {
-      await enviarCodigoTelefone(contaTelefone);
-      setContaEtapa("codigo");
+      const resultado = await criarContaCliente(contaNome, contaTelefone);
+      setPedidos(resultado.pedidos);
+      setContaCriada(true);
+      setContaConsultou(true);
+      window.localStorage.setItem("lilhao-historico-cliente-v1", JSON.stringify({
+        id: resultado.cliente.id,
+        nome: resultado.cliente.nome,
+        telefone: resultado.cliente.telefone,
+      }));
+      if (resultado.pedidos.length) {
+        setAba("pedidos");
+      } else {
+        setContaErro("");
+      }
     } catch (error) {
-      setContaErro(error instanceof Error ? error.message : "Não foi possível enviar o código.");
-    } finally {
-      setContaCarregando(false);
-    }
-  }
-
-  async function confirmarCodigoConta() {
-    setContaErro("");
-    if (contaCodigo.replace(/\D/g, "").length !== 6) {
-      setContaErro("Digite o código de 6 dígitos recebido no celular.");
-      return;
-    }
-    setContaCarregando(true);
-    try {
-      await confirmarCodigoTelefone(contaTelefone, contaCodigo);
-      const perfil = await sincronizarClienteAtual(contaNome, contaTelefone);
-      setCliente(perfil);
-      setContaEtapa("dados");
-      setContaCodigo("");
-      setAba("conta");
-      const lista = await carregarPedidosCliente();
-      setPedidos(lista);
-    } catch (error) {
-      setContaErro(error instanceof Error ? error.message : "Não foi possível confirmar o código.");
-    } finally {
-      setContaCarregando(false);
-    }
-  }
-
-  async function sairDaConta() {
-    setContaErro("");
-    setContaCarregando(true);
-    try {
-      await sairCliente();
-      setCliente(null);
-      setContaNome("");
-      setContaTelefone("");
-      setContaCodigo("");
-      setPedidos([]);
-      setContaEtapa("dados");
-    } catch (error) {
-      setContaErro(error instanceof Error ? error.message : "Não foi possível sair da conta.");
+      setContaErro(error instanceof Error ? error.message : "Não foi possível criar sua conta agora.");
     } finally {
       setContaCarregando(false);
     }
@@ -380,18 +320,27 @@ function Index() {
       setVerificandoPix(false);
     }
   }
+
   async function abrirMeusPedidos() {
-    try {
-      const lista = await carregarPedidosCliente();
-      setPedidos(lista.length ? lista : pedidoAtual ? [pedidoAtual] : []);
-    } catch {
-      setPedidos(pedidoAtual ? [pedidoAtual] : []);
-    }
-    setAba("pedidos");
     setCheckoutEtapa(0);
     setSacolaAberta(false);
     setPixData(null);
     setPixStatus("pendente");
+    if (contaNome.trim().split(/\s+/).length >= 2 && [10, 11, 12, 13].includes(contaTelefone.replace(/\D/g, "").length)) {
+      setContaCarregando(true);
+      try {
+        const lista = await consultarHistoricoPorNomeTelefone(contaNome, contaTelefone);
+        setPedidos(lista.length ? lista : pedidoAtual ? [pedidoAtual] : []);
+        setAba("pedidos");
+      } catch (error) {
+        setContaErro(error instanceof Error ? error.message : "Não foi possível carregar o histórico.");
+        setAba("conta");
+      } finally {
+        setContaCarregando(false);
+      }
+    } else {
+      setAba("conta");
+    }
   }
 
   const inputClass = "mt-1.5 min-h-12 w-full rounded-xl border border-white/10 bg-[#101112] px-4 text-base text-white outline-none placeholder:text-white/30 focus:border-[#ffc400]";
@@ -402,7 +351,7 @@ function Index() {
     {erroMenu && checkoutEtapa === 0 && <div className="mx-auto max-w-7xl px-4 pt-3 sm:px-6"><div className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-xs text-amber-200">{erroMenu}</div></div>}
     {checkoutEtapa === 0 && <div className="mx-auto max-w-7xl px-4 pt-3 sm:px-6"><div className={lojaAberta ? "rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-xs text-emerald-200" : "rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-xs text-amber-200"}>{lojaAberta ? <>● Estamos recebendo pedidos agora • {horarioAbertura} às {horarioFechamento}</> : <>{aceitaPedidos ? <>Estamos fechados no momento • Atendimento: {horarioAbertura} às {horarioFechamento}</> : <>Pedidos temporariamente pausados pela lanchonete.</>}</>}</div></div>}
     {erroCheckout && checkoutEtapa > 0 && <div className="mx-auto max-w-3xl px-3 pt-3 sm:px-6"><div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{erroCheckout}</div></div>}
-    <header className="sticky top-0 z-40 border-b border-white/10 bg-[#101010]/95 backdrop-blur-xl"><div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6"><div className="flex items-center gap-2"><button type="button" onClick={() => { setAba("conta"); setCheckoutEtapa(0); }} aria-label="Abrir minha conta" title="Minha conta" className="grid size-9 shrink-0 place-items-center rounded-full border border-[#ffc400]/40 bg-[#17150d] text-[#ffc400]"><User className="size-4"/></button><button onClick={() => { setAba("inicio"); setCheckoutEtapa(0); }} className="flex items-center gap-2.5 text-white"><span className="grid size-10 place-items-center rounded-full border-2 border-[#ffc400] bg-[#17150d] text-lg font-black text-[#ffc400]">L!</span><span><span className="block text-2xl font-black leading-none">Lilhão<span className="text-[#ffc400]">.</span></span><span className="mt-1 hidden text-[9px] font-bold uppercase tracking-[.16em] text-white/65 sm:block">Sabor que todo mundo aprova</span></span></button></div><nav aria-label="Navegação principal" className="hidden items-center gap-1 lg:flex"><button onClick={() => { setAba("inicio"); setCheckoutEtapa(0); }} className={`rounded-full px-4 py-2.5 text-sm font-bold transition ${aba === "inicio" ? "bg-[#ffc400] text-black" : "text-white/70 hover:bg-white/10 hover:text-white"}`}><Home className="mr-2 inline size-4"/>Início</button><button onClick={() => setCategoriasAbertas(true)} className="rounded-full px-4 py-2.5 text-sm font-bold text-white/70 transition hover:bg-white/10 hover:text-white"><Utensils className="mr-2 inline size-4"/>Categorias</button><button onClick={abrirMeusPedidos} className={`rounded-full px-4 py-2.5 text-sm font-bold transition ${aba === "pedidos" ? "bg-[#ffc400] text-black" : "text-white/70 hover:bg-white/10 hover:text-white"}`}><ClipboardList className="mr-2 inline size-4"/>Pedidos</button><button onClick={() => { setAba("conta"); setCheckoutEtapa(0); }} className={`rounded-full px-4 py-2.5 text-sm font-bold transition ${aba === "conta" ? "bg-[#ffc400] text-black" : "text-white/70 hover:bg-white/10 hover:text-white"}`}><User className="mr-2 inline size-4"/>Conta</button></nav><button type="button" onClick={() => setSacolaAberta(true)} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-[#ffc400] px-3.5 text-sm font-black text-black"><ShoppingBag className="size-5"/><span className="grid min-h-6 min-w-6 place-items-center rounded-full bg-black px-1 text-xs font-black text-[#ffc400]">{quantidade}</span></button></div></header>
+    <header className="sticky top-0 z-40 border-b border-white/10 bg-[#101010]/95 backdrop-blur-xl"><div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6"><div className="flex items-center gap-2"><button type="button" onClick={() => { setAba("conta"); setCheckoutEtapa(0); }} aria-label="Abrir minha conta" title="Minha conta" className="grid size-9 shrink-0 place-items-center rounded-full border border-[#ffc400]/40 bg-[#17150d] text-[#ffc400]"><User className="size-4"/></button><button onClick={() => { setAba("inicio"); setCheckoutEtapa(0); }} className="flex items-center gap-2.5 text-white"><span className="grid size-10 place-items-center rounded-full border-2 border-[#ffc400] bg-[#17150d] text-lg font-black text-[#ffc400]">L!</span><span><span className="block text-2xl font-black leading-none">Lilhão<span className="text-[#ffc400]">.</span></span><span className="mt-1 hidden text-[9px] font-bold uppercase tracking-[.16em] text-white/65 sm:block">Sabor que todo mundo aprova</span></span></button></div><nav aria-label="Navegação principal" className="hidden items-center gap-1 xl:flex"><button onClick={() => { setAba("inicio"); setCheckoutEtapa(0); }} className={`rounded-full px-4 py-2.5 text-sm font-bold transition ${aba === "inicio" ? "bg-[#ffc400] text-black" : "text-white/70 hover:bg-white/10 hover:text-white"}`}><Home className="mr-2 inline size-4"/>Início</button><button onClick={() => setCategoriasAbertas(true)} className="rounded-full px-4 py-2.5 text-sm font-bold text-white/70 transition hover:bg-white/10 hover:text-white"><Utensils className="mr-2 inline size-4"/>Categorias</button><button onClick={abrirMeusPedidos} className={`rounded-full px-4 py-2.5 text-sm font-bold transition ${aba === "pedidos" ? "bg-[#ffc400] text-black" : "text-white/70 hover:bg-white/10 hover:text-white"}`}><ClipboardList className="mr-2 inline size-4"/>Pedidos</button><button onClick={() => { setAba("conta"); setCheckoutEtapa(0); }} className={`rounded-full px-4 py-2.5 text-sm font-bold transition ${aba === "conta" ? "bg-[#ffc400] text-black" : "text-white/70 hover:bg-white/10 hover:text-white"}`}><User className="mr-2 inline size-4"/>Conta</button></nav><div className="flex shrink-0 items-center gap-2"><a href="/dashboard" className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-[#ffc400]/50 px-3 text-[11px] font-bold text-[#ffc400] transition hover:bg-[#ffc400] hover:text-black sm:min-h-10 sm:px-4 sm:text-xs" aria-label="Acessar área do proprietário" title="Área do proprietário"><LayoutDashboard className="size-4"/><span className="hidden sm:inline">Área do proprietário</span><span className="sm:hidden">Admin</span></a><button type="button" onClick={() => setSacolaAberta(true)} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-[#ffc400] px-3.5 text-sm font-black text-black"><ShoppingBag className="size-5"/><span className="grid min-h-6 min-w-6 place-items-center rounded-full bg-black px-1 text-xs font-black text-[#ffc400]">{quantidade}</span></button></div></div></header>
 
     {checkoutEtapa > 0 ? <main className="mx-auto min-h-[calc(100dvh-70px)] max-w-3xl px-3 pb-6 sm:px-6">
       <div className="sticky top-[65px] z-20 -mx-3 border-b border-white/10 bg-[#080909]/95 px-3 py-4 backdrop-blur sm:mx-0 sm:px-0"><div className="flex items-center gap-3"><button onClick={() => checkoutEtapa === 1 ? setCheckoutEtapa(0) : checkoutEtapa === 4 ? setCheckoutEtapa(3) : checkoutEtapa === 5 ? setCheckoutEtapa(0) : setCheckoutEtapa(checkoutEtapa - 1)} aria-label="Voltar" className="grid size-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/5"><ArrowLeft className="size-5"/></button><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-[#ffc400]">Lilhão • Seu pedido</p><h1 className="text-xl font-black">{checkoutEtapa === 4 ? "Pagamento via PIX" : checkoutEtapa === 5 ? "Pedido enviado" : "Finalizar pedido"}</h1></div></div>
@@ -453,31 +402,32 @@ function Index() {
           {(categoria === "Todos" ? categoriasMenu.slice(1) : [categoria]).map(cat => { const itens = filtrados.filter(p => p.categoria === cat); if (!itens.length) return null; const Icon = categoriaIcone(cat); return <section key={cat} className="mb-7"><div className="mb-3 flex items-center gap-3"><Icon className="size-6 text-[#ffc400]"/><h2 className="text-xl font-black">{cat}</h2></div><div className="space-y-2.5">{itens.map(p => <article key={p.id} className="flex min-h-[116px] overflow-hidden rounded-xl border border-white/15 bg-[#141617]"><div className="w-[112px] shrink-0 bg-black sm:w-36">{p.imagem ? <img src={p.imagem} alt={p.nome} loading="lazy" className="h-full min-h-[116px] w-full object-cover"/> : <div className="grid h-full min-h-[116px] place-items-center text-4xl">{cat === "Bebidas" ? "🥤" : cat === "Sorvetes" ? "🍨" : cat === "Pizzas" ? "🍕" : "🥪"}</div>}</div><div className="flex min-w-0 flex-1 items-center justify-between gap-2 p-3"><div className="min-w-0"><h3 className="text-sm font-bold">{p.nome}</h3><p className="mt-1 line-clamp-2 text-xs text-white/55">{p.descricao}</p><p className="mt-1.5 font-black text-[#ffc400]">{dinheiro(p.preco)}</p></div><button onClick={() => adicionar(p)} aria-label={`Adicionar ${p.nome}`} className="grid size-10 shrink-0 place-items-center rounded-full bg-[#ffc400] text-black"><Plus className="size-5"/></button></div></article>)}</div></section>; })}{filtrados.length === 0 && <p className="p-8 text-center text-white/50">Nenhum item encontrado.</p>}</section>
         <section className="border-t border-white/10 bg-[#111314] px-4 py-8 text-center"><p className="text-xs font-black uppercase tracking-[.2em] text-[#ffc400]">Estamos por aqui</p><h2 className="mt-2 text-2xl font-black">Lilhão, sabor que conquista</h2><div className="mt-5 flex flex-wrap justify-center gap-4 text-sm text-white/50"><span><Clock className="mr-1 inline size-4 text-[#ffc400]"/>{horarioAbertura} às {horarioFechamento}</span><span><Phone className="mr-1 inline size-4 text-[#ffc400]"/>Pedidos</span></div></section></main>}
 
-      {aba === "pedidos" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-6"><div className="flex items-center gap-3"><ClipboardList className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Sua conta</p><h1 className="text-2xl font-black">Meus pedidos</h1></div></div>{pedidos.length === 0 ? <div className="py-24 text-center"><ShoppingBag className="mx-auto size-12 text-white/20"/><h2 className="mt-4 text-lg font-bold">Nenhum pedido encontrado</h2><p className="mt-2 text-sm text-white/45">{cliente ? "Seus pedidos ficam vinculados à sua conta e podem ser acompanhados em qualquer dispositivo." : "Você pode acompanhar pedidos feitos neste navegador. Ao criar sua conta, seus pedidos serão vinculados ao seu perfil."}</p><button onClick={() => setAba("inicio")} className={`${actionClass} mt-5`}>Ver cardápio</button></div> : <div className="mt-5 space-y-3">{pedidos.map(p => <article key={p.numero} className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex items-center justify-between gap-3"><div><p className="text-xs text-white/45">Pedido #{p.numero}</p><p className="mt-1 font-black">{new Date(p.criadoEm).toLocaleDateString("pt-BR")}</p></div><span className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-300">{p.status}</span></div><div className="mt-3 flex items-center justify-between"><p className="text-sm text-white/60">{p.itens.reduce((s,i)=>s+i.quantidade,0)} item(ns) • {p.entrega}</p><b className="text-[#ffc400]">{dinheiro(p.total)}</b></div><button onClick={() => setPedidoAtual(p)} className="mt-3 w-full rounded-lg border border-white/10 py-2.5 text-sm font-bold">Ver detalhes</button></article>)}</div>}{pedidoAtual && checkoutEtapa === 0 && <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/75" onClick={() => setPedidoAtual(null)}><section onClick={e=>e.stopPropagation()} className="max-h-[80dvh] w-full max-w-xl overflow-y-auto rounded-t-3xl border border-white/10 bg-[#141617] p-5"><div className="flex items-center justify-between"><h2 className="text-xl font-black">Pedido #{pedidoAtual.numero}</h2><button onClick={() => setPedidoAtual(null)}><X className="size-5"/></button></div><p className="mt-3 text-sm text-white/60">{pedidoAtual.nome} • {pedidoAtual.telefone}</p><p className="mt-1 text-sm">{pedidoAtual.endereco}</p><p className="mt-2 text-sm">Pagamento: {pedidoAtual.pagamento}</p><div className="mt-4 space-y-2 border-t border-white/10 pt-3">{pedidoAtual.itens.map(i=><div key={i.id} className="flex justify-between text-sm"><span>{i.quantidade}x {i.nome}</span><span>{dinheiro(i.preco*i.quantidade)}</span></div>)}</div><div className="mt-3 flex justify-between border-t border-white/10 pt-3 font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(pedidoAtual.total)}</span></div></section></div>}</main>}
+      {aba === "pedidos" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-6">
+        <div className="flex items-center gap-3"><ClipboardList className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Histórico</p><h1 className="text-2xl font-black">Meus pedidos</h1></div></div>
+        <p className="mt-2 text-sm text-white/55">Veja os pedidos vinculados à sua sessão. Para localizar um pedido pelo número e celular, acesse Minha conta.</p>
+        {pedidos.length ? <div className="mt-5 space-y-3">{pedidos.map((pedido) => <article key={pedido.numero} className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs text-white/45">Pedido</p><h2 className="font-black">{pedido.numero}</h2><p className="mt-1 text-xs text-white/45">{new Date(pedido.criadoEm).toLocaleString("pt-BR")}</p></div><span className="rounded-full bg-[#ffc400]/10 px-3 py-1.5 text-xs font-bold text-[#ffc400]">{pedido.status}</span></div><div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3"><span className="text-sm text-white/55">{pedido.itens.reduce((total, item) => total + item.quantidade, 0)} item(ns)</span><strong className="text-[#ffc400]">{dinheiro(pedido.total)}</strong></div></article>)}</div> : <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-6 text-center"><ClipboardList className="mx-auto size-10 text-white/20"/><h2 className="mt-3 font-black">Nenhum pedido no histórico</h2><p className="mt-1 text-sm text-white/45">Entre na sua conta ou consulte pelo número e celular na área Minha conta.</p></div>}
+        <button onClick={() => { setAba("conta"); setCheckoutEtapa(0); }} className={`${actionClass} mt-4 w-full`}>Ir para Minha conta</button>
+      </main>}
       {aba === "conta" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-8">
         <div className="flex items-center gap-3"><User className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Sua conta</p><h1 className="text-2xl font-black">Minha conta</h1></div></div>
-        {sessaoCarregando ? <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-6 text-center text-white/50">Carregando sua conta...</div> : cliente ? <div className="mt-5 space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-[#141617] p-5"><p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">Conta verificada</p><h2 className="mt-2 text-2xl font-black">{cliente.nome}</h2><p className="mt-1 text-sm text-white/50">{cliente.telefone}</p><div className="mt-5 grid gap-3 sm:grid-cols-2"><button onClick={abrirMeusPedidos} className={actionClass+" w-full"}>Meus pedidos <ArrowRight className="ml-1 inline size-4"/></button><button onClick={sairDaConta} disabled={contaCarregando} className={quietClass+" w-full"}>Sair da conta</button></div></div>
-          <div className="rounded-2xl border border-white/10 bg-[#141617] p-5"><h3 className="font-black">Seus dados</h3><p className="mt-2 text-sm text-white/50">Seus pedidos agora ficam vinculados à sua conta, e não apenas a este navegador.</p></div>
-        </div> : <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-5">
-          <p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">Entrar ou criar conta</p><h2 className="mt-2 text-2xl font-black">Acompanhe seus pedidos</h2><p className="mt-2 text-sm leading-relaxed text-white/50">Use seu celular para receber um código de acesso. Não precisa criar senha.</p>
-          {contaErro && <div className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-200">{contaErro}</div>}
-          {contaEtapa === "dados" ? <div className="mt-5 space-y-3">
-            <label className="block text-xs font-bold text-white/55">Nome<input value={contaNome} onChange={e=>setContaNome(e.target.value)} placeholder="Seu nome" className={inputClass}/></label>
-            <label className="block text-xs font-bold text-white/55">Celular<input value={contaTelefone} onChange={e=>setContaTelefone(e.target.value)} inputMode="tel" placeholder="(96) 99999-9999" className={inputClass}/></label>
-            <button onClick={enviarCodigoConta} disabled={contaCarregando} className={actionClass+" w-full"}>{contaCarregando ? "Enviando código..." : "Receber código por SMS"} <ArrowRight className="ml-1 inline size-4"/></button>
-            <p className="text-center text-[11px] text-white/35">Seu celular será usado para autenticar sua conta com um código único.</p>
-          </div> : <div className="mt-5 space-y-3">
-            <label className="block text-xs font-bold text-white/55">Código de 6 dígitos<input value={contaCodigo} onChange={e=>setContaCodigo(e.target.value.replace(/\D/g,"").slice(0,6))} inputMode="numeric" maxLength={6} placeholder="000000" className={inputClass+" text-center text-2xl font-black tracking-[.5em]"}/></label>
-            <button onClick={confirmarCodigoConta} disabled={contaCarregando} className={actionClass+" w-full"}>{contaCarregando ? "Confirmando..." : "Confirmar código"}</button>
-            <button onClick={()=>{setContaEtapa("dados");setContaCodigo("");setContaErro("");}} className={quietClass+" w-full"}>Alterar celular</button>
-          </div>}
-        </div>}
+        <div className="mt-5 rounded-2xl border border-[#ffc400]/25 bg-[#141617] p-5">
+          <p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">{contaCriada ? "Conta cadastrada" : "Primeiro acesso"}</p><h2 className="mt-2 text-2xl font-black">{contaCriada ? "Sua conta Lilhão" : "Criar minha conta"}</h2><p className="mt-2 text-sm leading-relaxed text-white/50">{contaCriada ? "Seu cadastro está salvo. Use os mesmos dados para consultar seu histórico e vincular novas compras." : "Cadastre-se com seu nome completo e celular. Não precisa de e-mail, código ou senha."}</p>
+          {contaErro && <div role="alert" className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 text-sm text-amber-100">{contaErro}</div>}{contaConsultou && contaCriada && pedidos.length === 0 && <div role="status" className="mt-4 rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-100">Conta criada com sucesso! Ainda não encontramos compras anteriores com esses dados. Seus próximos pedidos poderão ser vinculados a esta conta.</div>}
+          <div className="mt-5 space-y-3">
+            <label className="block text-xs font-bold text-white/55">Nome completo<input value={contaNome} onChange={e=>setContaNome(e.target.value)} autoComplete="name" placeholder="Seu nome e sobrenome" className={inputClass}/></label>
+            <label className="block text-xs font-bold text-white/55">Celular / WhatsApp<input value={contaTelefone} onChange={e=>setContaTelefone(e.target.value)} inputMode="tel" autoComplete="tel" placeholder="(96) 99999-9999" className={inputClass}/></label>
+            <button onClick={consultarHistoricoConta} disabled={contaCarregando} className={actionClass+" w-full"}>{contaCarregando ? "Salvando sua conta..." : contaCriada ? "Atualizar meu histórico" : "Criar minha conta"} <ArrowRight className="ml-1 inline size-4"/></button>
+            <p className="text-[11px] leading-relaxed text-white/35">Informe dados verdadeiros. O nome e o celular serão usados para associar seu cadastro aos pedidos.</p>
+          </div>
+          {contaConsultou && pedidos.length === 0 && <p className="mt-4 text-sm text-white/60">Nenhum pedido encontrado para esses dados.</p>}
+        </div>
       </main>}
     </>}
 
     {quantidade > 0 && checkoutEtapa === 0 && <button onClick={() => setSacolaAberta(true)} className="fixed bottom-[88px] right-4 z-30 flex min-h-14 items-center gap-3 rounded-full bg-[#ffc400] px-5 font-black text-black shadow-xl md:bottom-6"><ShoppingBag className="size-5"/>Ver sacola • {dinheiro(subtotal)}</button>}
-    <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-white/10 bg-[#101112]/95 px-2 py-2 backdrop-blur-xl md:hidden"><button onClick={() => {setAba("inicio");setCheckoutEtapa(0);}} className={`flex flex-col items-center gap-1 py-1 text-[10px] font-semibold ${aba === "inicio" ? "text-[#ffc400]" : "text-white/55"}`}><Home className="size-5"/>Início</button><button onClick={() => setCategoriasAbertas(true)} className="flex flex-col items-center gap-1 py-1 text-[10px] font-semibold text-white/55"><Utensils className="size-5"/>Categorias</button><button onClick={abrirMeusPedidos} className={`flex flex-col items-center gap-1 py-1 text-[10px] font-semibold ${aba === "pedidos" ? "text-[#ffc400]" : "text-white/55"}`}><span className="relative"><ClipboardList className="size-5"/>{quantidade > 0 && <span className="absolute -right-3 -top-2 grid min-h-4 min-w-4 place-items-center rounded-full bg-[#ffc400] px-1 text-[9px] font-black text-black">{quantidade}</span>}</span>Pedidos</button><button onClick={() => {setAba("conta");setCheckoutEtapa(0);}} className={`flex flex-col items-center gap-1 py-1 text-[10px] font-semibold ${aba === "conta" ? "text-[#ffc400]" : "text-white/55"}`}><User className="size-5"/>Conta</button></nav>
+
+
+    <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-white/10 bg-[#101112]/95 px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-xl xl:hidden"><button onClick={() => {setAba("inicio");setCheckoutEtapa(0);}} className={`flex flex-col items-center gap-1 py-1 text-[10px] font-semibold ${aba === "inicio" ? "text-[#ffc400]" : "text-white/55"}`}><Home className="size-5"/>Início</button><button onClick={() => setCategoriasAbertas(true)} className="flex flex-col items-center gap-1 py-1 text-[10px] font-semibold text-white/55"><Utensils className="size-5"/>Categorias</button><button onClick={abrirMeusPedidos} className={`flex flex-col items-center gap-1 py-1 text-[10px] font-semibold ${aba === "pedidos" ? "text-[#ffc400]" : "text-white/55"}`}><span className="relative"><ClipboardList className="size-5"/>{quantidade > 0 && <span className="absolute -right-3 -top-2 grid min-h-4 min-w-4 place-items-center rounded-full bg-[#ffc400] px-1 text-[9px] font-black text-black">{quantidade}</span>}</span>Pedidos</button><button onClick={() => {setAba("conta");setCheckoutEtapa(0);}} className={`flex flex-col items-center gap-1 py-1 text-[10px] font-semibold ${aba === "conta" ? "text-[#ffc400]" : "text-white/55"}`}><User className="size-5"/>Conta</button></nav>
 
     {categoriasAbertas && <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/75 backdrop-blur-sm" onClick={() => setCategoriasAbertas(false)}><section role="dialog" aria-modal="true" onClick={e=>e.stopPropagation()} className="max-h-[82dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl border border-white/10 bg-[#111314] pb-6"><div className="sticky top-0 flex items-center justify-between border-b border-white/10 bg-[#111314] px-5 py-4"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-[#ffc400]">Explore o cardápio</p><h2 className="mt-1 text-xl font-black">Categorias</h2></div><button onClick={() => setCategoriasAbertas(false)} aria-label="Fechar categorias" className="grid size-10 place-items-center rounded-full border border-white/10"><X className="size-5"/></button></div><div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3">{categoriasMenu.map(item=>{const Icon=categoriaIcone(item);const selected=categoria===item;const count=item==="Todos"?menu.length:menu.filter(p=>p.categoria===item).length;return <button key={item} onClick={()=>{setCategoria(item);setCategoriasAbertas(false);setAba("inicio");document.getElementById("cardapio")?.scrollIntoView({behavior:"smooth"});}} className={`flex min-h-[90px] items-center gap-3 rounded-2xl border p-3 text-left ${selected?"border-[#ffc400] bg-[#ffc400] text-black":"border-white/10 bg-[#191b1c] text-white"}`}><span className={`grid size-10 shrink-0 place-items-center rounded-xl ${selected?"bg-black/10":"bg-[#ffc400]/10 text-[#ffc400]"}`}><Icon className="size-5"/></span><span><b className="block text-sm">{item}</b><small className={`mt-1 block text-[10px] ${selected?"text-black/60":"text-white/40"}`}>{item==="Todos"?"Cardápio completo":`${count} ${count===1?"opção":"opções"}`}</small></span></button>})}</div></section></div>}
 
