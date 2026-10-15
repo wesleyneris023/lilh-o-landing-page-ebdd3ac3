@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Clock, Copy,
 import heroBurger from "@/assets/hero-burger.jpg";
 
 import { categorias, dinheiro, lerProdutos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
-import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, consultarStatusPagamentoPix, ehAdmin, criarContaCliente } from "@/lib/api";
+import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, consultarStatusPagamentoPix, consultarHistoricoPorNomeTelefone, ehAdmin, criarContaCliente } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 function categoriaIcone(cat: string) {
   switch (cat) {
@@ -261,6 +261,14 @@ function Index() {
         itens: sacola.map((item) => ({ id: item.id, quantidade: item.quantidade })),
         idempotency_key: idempotencyKey,
       });
+      // Preserve checkout identity so "Pedidos" can retrieve history after the first purchase.
+      setContaNome(nome);
+      setContaTelefone(telefone);
+      window.localStorage.setItem("lilhao-historico-cliente-v1", JSON.stringify({
+        nome,
+        telefone,
+      }));
+
       const novo: Pedido = {
         numero: criado.numero,
         criadoEm: new Date().toISOString(),
