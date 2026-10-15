@@ -179,11 +179,11 @@ function Index() {
   async function consultarHistoricoConta() {
     setContaErro("");
     setContaConsultou(false);
-    if (contaNome.trim().split(/\\s+/).length < 2) {
+    if (contaNome.trim().split(/\s+/).length < 2) {
       setContaErro("Informe seu nome completo, com nome e sobrenome.");
       return;
     }
-    if (![10, 11, 12, 13].includes(contaTelefone.replace(/\\D/g, "").length)) {
+    if (![10, 11, 12, 13].includes(contaTelefone.replace(/\D/g, "").length)) {
       setContaErro("Informe um celular válido com DDD.");
       return;
     }
@@ -208,7 +208,7 @@ function Index() {
     setSacolaAberta(false);
     setPixData(null);
     setPixStatus("pendente");
-    if (contaNome.trim().split(/\\s+/).length >= 2 && [10, 11, 12, 13].includes(contaTelefone.replace(/\\D/g, "").length)) {
+    if (contaNome.trim().split(/\s+/).length >= 2 && [10, 11, 12, 13].includes(contaTelefone.replace(/\D/g, "").length)) {
       setContaCarregando(true);
       try {
         const lista = await consultarHistoricoPorNomeTelefone(contaNome, contaTelefone);
