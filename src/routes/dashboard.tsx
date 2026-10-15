@@ -181,6 +181,23 @@ function Dashboard() {
   const crescimentoSemana = vendasSemanaAnterior > 0
     ? ((vendasSemanaAtual - vendasSemanaAnterior) / vendasSemanaAnterior) * 100
     : null;
+  const lojaAberta = useMemo(() => {
+    if (!config?.aceita_pedidos) return false;
+    const abertura = String(config.horario_abertura || "18:00");
+    const fechamento = String(config.horario_fechamento || "23:30");
+    const [ah, am] = abertura.split(":").map(Number);
+    const [fh, fm] = fechamento.split(":").map(Number);
+    const agoraMin = agora.getHours() * 60 + agora.getMinutes();
+    const aberturaMin = ah * 60 + am;
+    const fechamentoMin = fh * 60 + fm;
+
+    if (aberturaMin === fechamentoMin) return true;
+    if (fechamentoMin > aberturaMin) {
+      return agoraMin >= aberturaMin && agoraMin < fechamentoMin;
+    }
+    return agoraMin >= aberturaMin || agoraMin < fechamentoMin;
+  }, [agora, config]);
+
   const crescimentoTexto = crescimentoSemana === null
     ? vendasSemanaAtual > 0 ? "Novo" : "Sem comparação"
     : `${crescimentoSemana >= 0 ? "↑" : "↓"} ${Math.abs(crescimentoSemana).toFixed(1)}%`;
@@ -451,14 +468,14 @@ function Dashboard() {
               </article>
               <article className="rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-5">
                 <h2 className="font-black">Segurança e operação</h2>
-                <ul className="mt-4 space-y-3 text-sm text-white/55"><li>✓ Supabase conectado</li><li>✓ Autenticação administrativa</li><li>✓ RLS ativo</li><li>✓ Pedidos persistidos no banco</li><li>✓ Atualização em tempo real</li><li>✓ PIX desativado até integração com provedor real</li></ul>
+                <ul className="mt-4 space-y-3 text-sm text-white/55"><li>✓ Supabase conectado</li><li>✓ Autenticação administrativa</li><li>✓ RLS ativo</li><li>✓ Pedidos persistidos no banco</li><li>✓ Atualização em tempo real</li><li>✓ PIX integrado via Mercado Pago</li></ul>
               </article>
             </aside>
           </div>
         </section>}
       </main>
     </div>
-    <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 border-t border-white/10 bg-[#101112]/95 p-2 backdrop-blur-xl md:hidden">{[["visao","Início",LayoutDashboard],["categorias","Categorias",Package],["pedidos","Pedidos",ClipboardList],["configuracoes","Conta",Settings]].map(([id,label,Icon])=><button key={id} onClick={()=>setAba(id as typeof aba)} className={`flex flex-col items-center gap-1 py-1 text-[9px] font-bold ${aba===id?"text-[#ffc400]":"text-white/45"}`}><Icon className="size-5"/>{label}</button>)}</nav>
+    <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 border-t border-white/10 bg-[#101112]/95 p-2 backdrop-blur-xl md:hidden">{[["visao","Início",LayoutDashboard],["categorias","Categorias",Package],["pedidos","Pedidos",ClipboardList],["configuracoes","Config.",Settings]].map(([id,label,Icon])=><button key={id} onClick={()=>setAba(id as typeof aba)} className={`flex flex-col items-center gap-1 py-1 text-[9px] font-bold ${aba===id?"text-[#ffc400]":"text-white/45"}`}><Icon className="size-5"/>{label}</button>)}</nav>
     {produtoEditando && (
       <div
         className="fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 sm:items-center sm:p-4"
@@ -532,4 +549,10 @@ function Dashboard() {
   </div>;
 }
 
-export const Route = createFileRoute("/dashboard")({ component: Dashboard });
+export const Route = createFileRoute("/dashboard")({
+  // O painel administrativo depende de Supabase Auth, APIs do navegador e Realtime.
+  // Não há benefício de SEO aqui; manter esta rota client-only evita falhas de SSR
+  // na primeira abertura direta do painel e deixa a autenticação acontecer no browser.
+  ssr: false,
+  component: Dashboard,
+});

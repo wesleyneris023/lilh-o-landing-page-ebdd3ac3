@@ -1,1 +1,10 @@
 project_id = "vcqiggjfozzbqcrzisqc"
+
+[functions.criar-pedido]
+verify_jwt = false
+
+[functions.criar-pedido-teste]
+verify_jwt = false
+
+[functions.mercadopago-webhook]
+verify_jwt = false

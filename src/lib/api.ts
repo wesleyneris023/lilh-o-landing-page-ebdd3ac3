@@ -59,6 +59,8 @@ function obterTokenCliente() {
   return token;
 }
 
+const PIX_ENABLED = import.meta.env.VITE_LILHAO_PIX_ENABLED === "true";
+
 export async function criarPedidoReal(input: {
   nome: string;
   telefone: string;
@@ -68,7 +70,11 @@ export async function criarPedidoReal(input: {
   observacao: string;
   itens: Array<{ id: string; quantidade: number }>;
   idempotency_key: string;
+  email?: string;
 }) {
+  if (input.pagamento === "PIX" && !PIX_ENABLED) {
+    throw new Error("Pagamento PIX não está disponível neste ambiente.");
+  }
   const { data: { session } } = await supabase.auth.getSession();
   const cliente_token = obterTokenCliente();
   const response = await fetch(ORDER_FUNCTION_URL, {
@@ -85,7 +91,25 @@ export async function criarPedidoReal(input: {
   if (typeof window !== "undefined" && typeof body?.cliente_token === "string" && body.cliente_token.length >= 32) {
     window.localStorage.setItem(CLIENTE_TOKEN_KEY, body.cliente_token);
   }
-  return body as { id: string; numero: string; subtotal: number; taxa_entrega: number; total: number; status: string; pagamento_status: string; cliente_token: string };
+  return body as {
+    id: string;
+    numero: string;
+    subtotal: number;
+    taxa_entrega: number;
+    total: number;
+    status: string;
+    pagamento_status: string;
+    cliente_token: string;
+    pix?: {
+      order_id: string;
+      payment_id: string | null;
+      status: string;
+      status_detail: string;
+      qr_code: string;
+      qr_code_base64: string;
+      ticket_url: string;
+    };
+  };
 }
 
 function mapPedido(row: any): Pedido {
@@ -175,6 +199,29 @@ export async function sincronizarClienteAtual(nome: string, telefone: string) {
 export async function sairCliente() {
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
+}
+
+export async function consultarStatusPagamentoPix(numero: string) {
+  const response = await fetch(ORDER_FUNCTION_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || "",
+    },
+    body: JSON.stringify({
+      acao: "consultar_pagamento",
+      numero,
+      cliente_token: obterTokenCliente(),
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body?.error || "Não foi possível verificar o pagamento.");
+  return body as {
+    numero: string;
+    pagamento_status: "pendente" | "aprovado" | "recusado" | "cancelado";
+    mercadopago_order_id: string | null;
+    mercadopago_payment_id: string | null;
+  };
 }
 
 export async function carregarPedidosCliente(): Promise<Pedido[]> {
@@ -274,7 +321,8 @@ export async function excluirProdutoDb(id: string) {
 export async function carregarFormasPagamento() {
   const { data, error } = await supabase.from("formas_pagamento").select("nome").eq("ativo", true).order("ordem", { ascending: true });
   if (error) throw error;
-  return (data || []).map((item) => item.nome);
+  const nomes = (data || []).map((item) => item.nome);
+  return PIX_ENABLED ? nomes : nomes.filter((nome) => nome !== "PIX");
 }
 
 export async function carregarConfiguracoes() {
