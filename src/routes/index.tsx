@@ -211,6 +211,116 @@ function Index() {
     }
   }
 
+  function adicionar(produto: Produto) { setSacola((atual) => { const existe = atual.find((i) => i.id === produto.id); return existe ? atual.map((i) => i.id === produto.id ? { ...i, quantidade: i.quantidade + 1 } : i) : [...atual, { ...produto, quantidade: 1 }]; }); }
+  function alterarQuantidade(id: string, delta: number) { setSacola((atual) => atual.map((i) => i.id === id ? { ...i, quantidade: i.quantidade + delta } : i).filter((i) => i.quantidade > 0)); }
+  function abrirCheckout() {
+    setErroCheckout("");
+    if (!configCarregada) {
+      setErroCheckout("A loja ainda está carregando. Tente novamente em alguns segundos.");
+      return;
+    }
+    if (!lojaAberta) {
+      setErroCheckout(aceitaPedidos ? `Estamos fechados. Atendimento: ${horarioAbertura} às ${horarioFechamento}.` : "A lanchonete está temporariamente sem receber pedidos.");
+      return;
+    }
+    if (pedidoMinimo > 0 && subtotal < pedidoMinimo) {
+      setErroCheckout(`O pedido mínimo é de ${dinheiro(pedidoMinimo)}.`);
+      return;
+    }
+    if (!sacola.length) return;
+    setSacolaAberta(false);
+    setPedidoIdempotencyKey(crypto.randomUUID());
+    setCheckoutEtapa(1);
+    setAba("inicio");
+  }
+  function continuarEntrega() { if (!nome.trim() || !telefone.trim() || (tipoEntrega === "entrega" && (!rua.trim() || !numero.trim() || !bairro.trim()))) return; setCheckoutEtapa(2); }
+  function continuarPagamento() { if (!pagamento) return; setCheckoutEtapa(3); }
+  async function confirmarPedido() {
+    if (!sacola.length || enviandoPedido) return;
+    setErroCheckout("");
+    setEnviandoPedido(true);
+    const idempotencyKey = pedidoIdempotencyKey || crypto.randomUUID();
+    if (!pedidoIdempotencyKey) setPedidoIdempotencyKey(idempotencyKey);
+    if (pagamento === "PIX" && !email.trim()) {
+      setErroCheckout("Informe um e-mail válido para gerar o PIX.");
+      setEnviandoPedido(false);
+      return;
+    }
+    const enderecoTexto = tipoEntrega === "retirada"
+      ? "Retirada no local"
+      : rua + ", " + numero + " — " + bairro + (complemento ? ", " + complemento : "") + (referencia ? " (Ref.: " + referencia + ")" : "");
+    try {
+      const criado = await criarPedidoReal({
+        nome,
+        telefone,
+        email: email.trim(),
+        tipo_entrega: tipoEntrega,
+        endereco: { cep, rua, numero, bairro, complemento, referencia, texto: enderecoTexto },
+        pagamento,
+        observacao,
+        itens: sacola.map((item) => ({ id: item.id, quantidade: item.quantidade })),
+        idempotency_key: idempotencyKey,
+      });
+      const novo: Pedido = {
+        numero: criado.numero,
+        criadoEm: new Date().toISOString(),
+        itens: sacola,
+        nome,
+        telefone,
+        entrega: tipoEntrega === "retirada" ? "Retirada no local" : "Entrega",
+        endereco: enderecoTexto,
+        pagamento: pagamento + (pagamento === "Dinheiro" && troco ? " (troco para " + troco + ")" : ""),
+        observacao,
+        subtotal: Number(criado.subtotal),
+        taxa: Number(criado.taxa_entrega),
+        total: Number(criado.total),
+        status: "Recebido",
+      };
+      setPedidos((atual) => [novo, ...atual]);
+      setPedidoAtual(novo);
+
+      if (pagamento === "PIX") {
+        if (!criado.pix?.qr_code) throw new Error("O Mercado Pago não retornou o código PIX.");
+        setPixData(criado.pix);
+        setPixStatus("pendente");
+        setCheckoutEtapa(4);
+        return;
+      }
+
+      setSacola([]);
+      setPedidoIdempotencyKey("");
+      setCheckoutEtapa(5);
+    } catch (error) {
+      setErroCheckout(error instanceof Error ? error.message : "Não foi possível enviar o pedido. Tente novamente.");
+    } finally {
+      setEnviandoPedido(false);
+    }
+  }
+
+  async function verificarPagamentoPix() {
+    if (!pedidoAtual || verificandoPix) return;
+    setVerificandoPix(true);
+    setErroCheckout("");
+    try {
+      const resultado = await consultarStatusPagamentoPix(pedidoAtual.numero);
+      const status = resultado.pagamento_status as typeof pixStatus;
+      setPixStatus(status);
+      if (status === "aprovado") {
+        setSacola([]);
+        setPedidoIdempotencyKey("");
+        setCheckoutEtapa(5);
+      } else if (status === "recusado" || status === "cancelado") {
+        setErroCheckout("O pagamento PIX não foi aprovado. Você pode voltar e tentar novamente.");
+      } else {
+        setErroCheckout("O pagamento ainda está pendente. Se você já pagou, aguarde alguns segundos e verifique novamente.");
+      }
+    } catch (error) {
+      setErroCheckout(error instanceof Error ? error.message : "Não foi possível verificar o pagamento agora.");
+    } finally {
+      setVerificandoPix(false);
+    }
+  }
+
   async function abrirMeusPedidos() {
     setCheckoutEtapa(0);
     setSacolaAberta(false);
