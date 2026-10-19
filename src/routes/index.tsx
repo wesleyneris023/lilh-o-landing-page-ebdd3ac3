@@ -178,7 +178,7 @@ function Index() {
     if (!preferenciasCarregadas || aba !== "pedidos") return;
     const nomeSalvo = contaNome.trim();
     const telefoneSalvo = contaTelefone.trim();
-    if (nomeSalvo.length < 2 || ![10, 11, 12, 13].includes(telefoneSalvo.replace(/\\D/g, "").length)) return;
+    if (nomeSalvo.length < 2 || ![10, 11, 12, 13].includes(telefoneSalvo.replace(/\D/g, "").length)) return;
     let ativo = true;
     const atualizarHistorico = async () => {
       try {
