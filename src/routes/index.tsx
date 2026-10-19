@@ -334,7 +334,7 @@ function Index() {
     setSacolaAberta(false);
     setPixData(null);
     setPixStatus("pendente");
-    if (contaNome.trim().split(/\s+/).length >= 2 && [10, 11, 12, 13].includes(contaTelefone.replace(/\D/g, "").length)) {
+    if (contaNome.trim().length >= 2 && [10, 11, 12, 13].includes(contaTelefone.replace(/\D/g, "").length)) {
       setContaCarregando(true);
       try {
         const lista = await consultarHistoricoPorNomeTelefone(contaNome, contaTelefone);
