@@ -193,13 +193,14 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const nomeKey = nome.toLocaleLowerCase("pt-BR");
+      const primeiroNomeKey = nome.toLocaleLowerCase("pt-BR").split(/\s+/)[0];
       const telefoneKey = normalizarTelefone(telefone);
       const { data: clientes, error: clientesError } = await admin.from("clientes").select("id,nome,telefone").limit(1000);
       if (clientesError) throw clientesError;
       const clienteTelefone = (clientes || []).find((c: any) => normalizarTelefone(String(c.telefone || "")) === telefoneKey);
-      if (clienteTelefone && String(clienteTelefone.nome || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR") !== nomeKey) {
-        return new Response(JSON.stringify({ error: "Este celular já está cadastrado com outro nome. Procure o atendimento da lanchonete para corrigir o cadastro." }), {
+      const primeiroNomeExistente = String(clienteTelefone?.nome || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR").split(/\s+/)[0];
+      if (clienteTelefone && primeiroNomeExistente !== primeiroNomeKey) {
+        return new Response(JSON.stringify({ error: "Este celular já está cadastrado com outro primeiro nome. Confira os dados ou procure o atendimento." }), {
           status: 409, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
         });
       }
@@ -214,13 +215,12 @@ Deno.serve(async (req: Request) => {
       const { data: candidatos, error: pedidosError } = await admin
         .from("pedidos")
         .select("id,numero,nome_cliente,telefone,cliente_id")
-        .ilike("nome_cliente", nome)
         .is("cliente_id", null)
         .order("criado_em", { ascending: false })
-        .limit(500);
+        .limit(1000);
       if (pedidosError) throw pedidosError;
       const ids = (candidatos || []).filter((p: any) =>
-        String(p.nome_cliente || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR") === nomeKey &&
+        String(p.nome_cliente || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR").split(/\s+/)[0] === primeiroNomeKey &&
         normalizarTelefone(String(p.telefone || "")) === telefoneKey
       ).map((p: any) => p.id);
 
@@ -250,8 +250,8 @@ Deno.serve(async (req: Request) => {
         const digits = value.replace(/[^0-9]/g, "");
         return (digits.length === 12 || digits.length === 13) && digits.startsWith("55") ? digits.slice(2) : digits;
       };
-      if (nomeInformado.length < 3 || nomeInformado.split(" ").length < 2 || ![10, 11, 12, 13].includes(digitosInformados.length)) {
-        return new Response(JSON.stringify({ error: "Informe nome completo e celular com DDD." }), {
+      if (nomeInformado.length < 2 || ![10, 11, 12, 13].includes(digitosInformados.length)) {
+        return new Response(JSON.stringify({ error: "Informe seu primeiro nome e o celular com DDD usado na compra." }), {
           status: 400, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
         });
       }
@@ -267,18 +267,18 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const nomeKey = nomeInformado.toLocaleLowerCase("pt-BR");
+      const primeiroNomeKey = nomeInformado.toLocaleLowerCase("pt-BR").split(/\s+/)[0];
+      const telefoneKey = normalizarTelefone(telefoneInformado);
       const { data: rows, error: historyError } = await admin
         .from("pedidos")
         .select("numero,criado_em,nome_cliente,telefone,tipo_entrega,pagamento,pagamento_status,status,subtotal,taxa_entrega,total,pedido_itens(id,produto_id,nome_produto,preco_unitario,quantidade,total)")
-        .ilike("nome_cliente", nomeInformado)
         .order("criado_em", { ascending: false })
-        .limit(500);
+        .limit(1000);
       if (historyError) throw historyError;
 
       const pedidos = (rows || []).filter((row: any) =>
-        String(row.nome_cliente || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR") === nomeKey &&
-        normalizarTelefone(String(row.telefone || "")) === normalizarTelefone(telefoneInformado)
+        String(row.nome_cliente || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR").split(/\s+/)[0] === primeiroNomeKey &&
+        normalizarTelefone(String(row.telefone || "")) === telefoneKey
       );
       return new Response(JSON.stringify({ pedidos }), {
         status: 200, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
