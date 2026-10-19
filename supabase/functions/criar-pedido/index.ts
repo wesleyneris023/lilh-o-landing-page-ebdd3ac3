@@ -269,11 +269,33 @@ Deno.serve(async (req: Request) => {
 
       const primeiroNomeKey = nomeInformado.toLocaleLowerCase("pt-BR").split(/\s+/)[0];
       const telefoneKey = normalizarTelefone(telefoneInformado);
-      const { data: pedidos, error: historyError } = await admin.rpc("consultar_historico_nome_telefone", {
+      // Use the history RPC only to identify the matching order numbers, then
+      // read the live rows from pedidos. This prevents stale status values from
+      // the RPC response from keeping the customer's badge out of sync.
+      const { data: historico, error: historyError } = await admin.rpc("consultar_historico_nome_telefone", {
         p_primeiro_nome: primeiroNomeKey,
         p_telefone: telefoneKey,
       });
       if (historyError) throw historyError;
+
+      const numeros = Array.isArray(historico)
+        ? historico.map((p: any) => String(p?.numero || "")).filter((n: string) => /^LH-\\d{8}-\\d{4,}$/.test(n)).slice(0, 100)
+        : [];
+      let pedidos: any[] = [];
+      if (numeros.length) {
+        const { data: rows, error: rowsError } = await admin
+          .from("pedidos")
+          .select("numero,criado_em,nome_cliente,telefone,tipo_entrega,pagamento,pagamento_status,status,subtotal,taxa_entrega,total,pedido_itens(id,produto_id,nome_produto,preco_unitario,quantidade,total)")
+          .in("numero", numeros)
+          .order("criado_em", { ascending: false });
+        if (rowsError) throw rowsError;
+        // Re-check both identifiers before returning any live order details.
+        pedidos = (rows || []).filter((p: any) =>
+          normalizarTelefone(String(p.telefone || "")) === telefoneKey &&
+          String(p.nome_cliente || "").trim().replace(/\\s+/g, " ").toLocaleLowerCase("pt-BR").split(/\\s+/)[0] === primeiroNomeKey
+        );
+      }
+
       return new Response(JSON.stringify({ pedidos }), {
         status: 200, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
       });
