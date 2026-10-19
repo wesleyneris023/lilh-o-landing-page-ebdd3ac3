@@ -6,6 +6,19 @@ import heroBurger from "@/assets/hero-burger.jpg";
 import { categorias, dinheiro, lerProdutos, type ItemSacola, type Pedido, type Produto } from "@/data/store";
 import { carregarCatalogo, carregarCategorias, carregarConfiguracoes, carregarFormasPagamento, criarPedidoReal, consultarStatusPagamentoPix, consultarHistoricoPorNomeTelefone, ehAdmin, criarContaCliente } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
+function classeStatusPedido(status: string) {
+  switch (status.trim().toLocaleLowerCase("pt-BR")) {
+    case "recebido": return "bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/20";
+    case "em preparo": return "bg-sky-400/15 text-sky-300 ring-1 ring-sky-400/20";
+    case "pronto": return "bg-violet-400/15 text-violet-300 ring-1 ring-violet-400/20";
+    case "saiu para entrega": return "bg-cyan-400/15 text-cyan-300 ring-1 ring-cyan-400/20";
+    case "concluído":
+    case "concluido": return "bg-emerald-400/15 text-emerald-300 ring-1 ring-emerald-400/25";
+    case "cancelado": return "bg-red-400/15 text-red-300 ring-1 ring-red-400/20";
+    default: return "bg-white/10 text-white/75 ring-1 ring-white/10";
+  }
+}
+
 function categoriaIcone(cat: string) {
   switch (cat) {
     case "Todos": return LayoutDashboard;
@@ -189,7 +202,12 @@ function Index() {
     if (nomeSalvo.length < 2 || ![10, 11, 12, 13].includes(telefoneSalvo.replace(/\D/g, "").length)) { setHistoricoCarregando(false); return; }
     setHistoricoCarregando(true);
     let ativo = true;
+    let requisicaoEmAndamento = false;
     const atualizarHistorico = async () => {
+      // Evita que uma consulta lenta anterior termine depois de uma nova e
+      // sobrescreva um status mais recente com dados antigos.
+      if (requisicaoEmAndamento) return;
+      requisicaoEmAndamento = true;
       try {
         const [lista, numerosSalvos] = await Promise.all([
           consultarHistoricoPorNomeTelefone(nomeSalvo, telefoneSalvo),
@@ -219,11 +237,12 @@ function Index() {
       } catch {
         // Keep the last successful cached view visible during transient network errors.
       } finally {
-        setHistoricoCarregando(false);
+        requisicaoEmAndamento = false;
+        if (ativo) setHistoricoCarregando(false);
       }
     };
     void atualizarHistorico();
-    const timer = window.setInterval(() => { void atualizarHistorico(); }, 5000);
+    const timer = window.setInterval(() => { void atualizarHistorico(); }, 3000);
     return () => {
       ativo = false;
       window.clearInterval(timer);
@@ -513,7 +532,7 @@ function Index() {
       {aba === "pedidos" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-6">
         <div className="flex items-center gap-3"><ClipboardList className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Histórico</p><h1 className="text-2xl font-black">Meus pedidos</h1></div></div>
         <p className="mt-2 text-sm text-white/55">Veja os pedidos vinculados à sua sessão. Para localizar um pedido pelo número e celular, acesse Minha conta.</p>
-        {pedidos.length ? <div className="mt-5 space-y-3">{pedidos.map((pedido) => <article key={pedido.numero} className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs text-white/45">Pedido</p><h2 className="font-black">{pedido.numero}</h2><p className="mt-1 text-xs text-white/45">{new Date(pedido.criadoEm).toLocaleString("pt-BR")}</p></div><span className="rounded-full bg-[#ffc400]/10 px-3 py-1.5 text-xs font-bold text-[#ffc400]">{pedido.status}</span></div><div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3"><span className="text-sm text-white/55">{pedido.itens.reduce((total, item) => total + item.quantidade, 0)} item(ns)</span><strong className="text-[#ffc400]">{dinheiro(pedido.total)}</strong></div></article>)}</div> : <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-6 text-center">{historicoCarregando ? <><ClipboardList className="mx-auto size-10 animate-pulse text-[#ffc400]"/><h2 className="mt-3 font-black">Carregando seu histórico…</h2><p className="mt-1 text-sm text-white/45">Estamos recuperando seus pedidos salvos. Não precisa informar seus dados novamente.</p></> : <><ClipboardList className="mx-auto size-10 text-white/20"/><h2 className="mt-3 font-black">Nenhum pedido no histórico</h2><p className="mt-1 text-sm text-white/45">Não conseguimos carregar os pedidos agora. Confira seus dados em Minha conta ou tente atualizar o histórico.</p></>}</div>}
+        {pedidos.length ? <div className="mt-5 space-y-3">{pedidos.map((pedido) => <article key={pedido.numero} className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs text-white/45">Pedido</p><h2 className="font-black">{pedido.numero}</h2><p className="mt-1 text-xs text-white/45">{new Date(pedido.criadoEm).toLocaleString("pt-BR")}</p></div><span aria-label={`Status do pedido: ${pedido.status}`} className={`rounded-full px-3 py-1.5 text-xs font-extrabold ${classeStatusPedido(pedido.status)}`}>{pedido.status}</span></div><div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3"><span className="text-sm text-white/55">{pedido.itens.reduce((total, item) => total + item.quantidade, 0)} item(ns)</span><strong className="text-[#ffc400]">{dinheiro(pedido.total)}</strong></div></article>)}</div> : <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-6 text-center">{historicoCarregando ? <><ClipboardList className="mx-auto size-10 animate-pulse text-[#ffc400]"/><h2 className="mt-3 font-black">Carregando seu histórico…</h2><p className="mt-1 text-sm text-white/45">Estamos recuperando seus pedidos salvos. Não precisa informar seus dados novamente.</p></> : <><ClipboardList className="mx-auto size-10 text-white/20"/><h2 className="mt-3 font-black">Nenhum pedido no histórico</h2><p className="mt-1 text-sm text-white/45">Não conseguimos carregar os pedidos agora. Confira seus dados em Minha conta ou tente atualizar o histórico.</p></>}</div>}
         <button onClick={() => { setAba("conta"); setCheckoutEtapa(0); }} className={`${actionClass} mt-4 w-full`}>Ir para Minha conta</button>
       </main>}
       {aba === "conta" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-8">
