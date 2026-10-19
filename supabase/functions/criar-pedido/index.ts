@@ -269,17 +269,11 @@ Deno.serve(async (req: Request) => {
 
       const primeiroNomeKey = nomeInformado.toLocaleLowerCase("pt-BR").split(/\s+/)[0];
       const telefoneKey = normalizarTelefone(telefoneInformado);
-      const { data: rows, error: historyError } = await admin
-        .from("pedidos")
-        .select("numero,criado_em,nome_cliente,telefone,tipo_entrega,pagamento,pagamento_status,status,subtotal,taxa_entrega,total,pedido_itens(id,produto_id,nome_produto,preco_unitario,quantidade,total)")
-        .order("criado_em", { ascending: false })
-        .limit(1000);
+      const { data: pedidos, error: historyError } = await admin.rpc("consultar_historico_nome_telefone", {
+        p_primeiro_nome: primeiroNomeKey,
+        p_telefone: telefoneKey,
+      });
       if (historyError) throw historyError;
-
-      const pedidos = (rows || []).filter((row: any) =>
-        String(row.nome_cliente || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR").split(/\s+/)[0] === primeiroNomeKey &&
-        normalizarTelefone(String(row.telefone || "")) === telefoneKey
-      );
       return new Response(JSON.stringify({ pedidos }), {
         status: 200, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
       });
