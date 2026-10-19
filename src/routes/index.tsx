@@ -41,6 +41,7 @@ function Index() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [pedidoAtual, setPedidoAtual] = useState<Pedido | null>(null);
   const [aba, setAba] = useState<"inicio" | "pedidos" | "conta">("inicio");
+  const [preferenciasCarregadas, setPreferenciasCarregadas] = useState(false);
   const [menu, setMenu] = useState<Produto[]>(lerProdutos());
   const [categoriasMenu, setCategoriasMenu] = useState<string[]>(categorias);
   const [pixData, setPixData] = useState<{
@@ -154,10 +155,46 @@ function Index() {
         if (parsed.nome) setContaNome(parsed.nome);
         if (parsed.telefone) setContaTelefone(parsed.telefone);
       }
+      const abaSalva = window.localStorage.getItem("lilhao-aba-atual-v1");
+      if (abaSalva === "pedidos" || abaSalva === "conta") setAba(abaSalva);
     } catch {
       window.localStorage.removeItem("lilhao-historico-cliente-v1");
+      window.localStorage.removeItem("lilhao-aba-atual-v1");
+    } finally {
+      setPreferenciasCarregadas(true);
     }
   }, []);
+
+  // Preserve the customer's current section across refreshes.
+  useEffect(() => {
+    if (preferenciasCarregadas) {
+      window.localStorage.setItem("lilhao-aba-atual-v1", aba);
+    }
+  }, [aba, preferenciasCarregadas]);
+
+  // The public history view polls only while open. This keeps order status fresh
+  // without exposing a broad realtime subscription to unauthenticated visitors.
+  useEffect(() => {
+    if (!preferenciasCarregadas || aba !== "pedidos") return;
+    const nomeSalvo = contaNome.trim();
+    const telefoneSalvo = contaTelefone.trim();
+    if (nomeSalvo.length < 2 || ![10, 11, 12, 13].includes(telefoneSalvo.replace(/\\D/g, "").length)) return;
+    let ativo = true;
+    const atualizarHistorico = async () => {
+      try {
+        const lista = await consultarHistoricoPorNomeTelefone(nomeSalvo, telefoneSalvo);
+        if (ativo) setPedidos(lista);
+      } catch {
+        // Keep the last successful view visible during transient network errors.
+      }
+    };
+    void atualizarHistorico();
+    const timer = window.setInterval(() => { void atualizarHistorico(); }, 5000);
+    return () => {
+      ativo = false;
+      window.clearInterval(timer);
+    };
+  }, [aba, contaNome, contaTelefone, preferenciasCarregadas]);
 
 
   const filtrados = useMemo(() => menu.filter((p) => (categoria === "Todos" || p.categoria === categoria) && `${p.nome} ${p.descricao}`.toLowerCase().includes(busca.toLowerCase())), [categoria, busca, menu]);
