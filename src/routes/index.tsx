@@ -42,6 +42,7 @@ function Index() {
   const [pedidoAtual, setPedidoAtual] = useState<Pedido | null>(null);
   const [aba, setAba] = useState<"inicio" | "pedidos" | "conta">("inicio");
   const [preferenciasCarregadas, setPreferenciasCarregadas] = useState(false);
+  const [historicoCarregando, setHistoricoCarregando] = useState(false);
   const [menu, setMenu] = useState<Produto[]>(lerProdutos());
   const [categoriasMenu, setCategoriasMenu] = useState<string[]>(categorias);
   const [pixData, setPixData] = useState<{
@@ -185,7 +186,8 @@ function Index() {
     if (!preferenciasCarregadas || aba !== "pedidos") return;
     const nomeSalvo = contaNome.trim();
     const telefoneSalvo = contaTelefone.trim();
-    if (nomeSalvo.length < 2 || ![10, 11, 12, 13].includes(telefoneSalvo.replace(/\D/g, "").length)) return;
+    if (nomeSalvo.length < 2 || ![10, 11, 12, 13].includes(telefoneSalvo.replace(/\D/g, "").length)) { setHistoricoCarregando(false); return; }
+    setHistoricoCarregando(true);
     let ativo = true;
     const atualizarHistorico = async () => {
       try {
@@ -216,6 +218,8 @@ function Index() {
         }
       } catch {
         // Keep the last successful cached view visible during transient network errors.
+      } finally {
+        setHistoricoCarregando(false);
       }
     };
     void atualizarHistorico();
@@ -509,7 +513,7 @@ function Index() {
       {aba === "pedidos" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-6">
         <div className="flex items-center gap-3"><ClipboardList className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Histórico</p><h1 className="text-2xl font-black">Meus pedidos</h1></div></div>
         <p className="mt-2 text-sm text-white/55">Veja os pedidos vinculados à sua sessão. Para localizar um pedido pelo número e celular, acesse Minha conta.</p>
-        {pedidos.length ? <div className="mt-5 space-y-3">{pedidos.map((pedido) => <article key={pedido.numero} className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs text-white/45">Pedido</p><h2 className="font-black">{pedido.numero}</h2><p className="mt-1 text-xs text-white/45">{new Date(pedido.criadoEm).toLocaleString("pt-BR")}</p></div><span className="rounded-full bg-[#ffc400]/10 px-3 py-1.5 text-xs font-bold text-[#ffc400]">{pedido.status}</span></div><div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3"><span className="text-sm text-white/55">{pedido.itens.reduce((total, item) => total + item.quantidade, 0)} item(ns)</span><strong className="text-[#ffc400]">{dinheiro(pedido.total)}</strong></div></article>)}</div> : <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-6 text-center"><ClipboardList className="mx-auto size-10 text-white/20"/><h2 className="mt-3 font-black">Nenhum pedido no histórico</h2><p className="mt-1 text-sm text-white/45">Entre na sua conta ou consulte pelo número e celular na área Minha conta.</p></div>}
+        {pedidos.length ? <div className="mt-5 space-y-3">{pedidos.map((pedido) => <article key={pedido.numero} className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs text-white/45">Pedido</p><h2 className="font-black">{pedido.numero}</h2><p className="mt-1 text-xs text-white/45">{new Date(pedido.criadoEm).toLocaleString("pt-BR")}</p></div><span className="rounded-full bg-[#ffc400]/10 px-3 py-1.5 text-xs font-bold text-[#ffc400]">{pedido.status}</span></div><div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3"><span className="text-sm text-white/55">{pedido.itens.reduce((total, item) => total + item.quantidade, 0)} item(ns)</span><strong className="text-[#ffc400]">{dinheiro(pedido.total)}</strong></div></article>)}</div> : <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-6 text-center">{historicoCarregando ? <><ClipboardList className="mx-auto size-10 animate-pulse text-[#ffc400]"/><h2 className="mt-3 font-black">Carregando seu histórico…</h2><p className="mt-1 text-sm text-white/45">Estamos recuperando seus pedidos salvos. Não precisa informar seus dados novamente.</p></> : <><ClipboardList className="mx-auto size-10 text-white/20"/><h2 className="mt-3 font-black">Nenhum pedido no histórico</h2><p className="mt-1 text-sm text-white/45">Não conseguimos carregar os pedidos agora. Confira seus dados em Minha conta ou tente atualizar o histórico.</p></>}</div>}
         <button onClick={() => { setAba("conta"); setCheckoutEtapa(0); }} className={`${actionClass} mt-4 w-full`}>Ir para Minha conta</button>
       </main>}
       {aba === "conta" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-8">
