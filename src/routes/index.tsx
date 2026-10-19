@@ -155,6 +155,13 @@ function Index() {
         if (parsed.nome) setContaNome(parsed.nome);
         if (parsed.telefone) setContaTelefone(parsed.telefone);
       }
+      // Restore the last known order cards immediately; the server refresh below
+      // replaces them with current statuses after a reload.
+      const cachedOrders = window.localStorage.getItem("lilhao-historico-pedidos-v1");
+      if (cachedOrders) {
+        const parsedOrders = JSON.parse(cachedOrders) as Pedido[];
+        if (Array.isArray(parsedOrders)) setPedidos(parsedOrders.slice(0, 20));
+      }
       const abaSalva = window.localStorage.getItem("lilhao-aba-atual-v1");
       if (abaSalva === "pedidos" || abaSalva === "conta") setAba(abaSalva);
     } catch {
@@ -182,10 +189,33 @@ function Index() {
     let ativo = true;
     const atualizarHistorico = async () => {
       try {
-        const lista = await consultarHistoricoPorNomeTelefone(nomeSalvo, telefoneSalvo);
-        if (ativo) setPedidos(lista);
+        const [lista, numerosSalvos] = await Promise.all([
+          consultarHistoricoPorNomeTelefone(nomeSalvo, telefoneSalvo),
+          Promise.resolve().then(() => {
+            try {
+              const raw = window.localStorage.getItem("lilhao-historico-numeros-v1");
+              const values = raw ? JSON.parse(raw) : [];
+              return Array.isArray(values) ? values.filter((n): n is string => typeof n === "string").slice(0, 20) : [];
+            } catch { return []; }
+          }),
+        ]);
+        // Recover orders created on this browser even if the legacy account
+        // association RPC temporarily returns an incomplete history.
+        const locais = await Promise.all(numerosSalvos.map(async (numero) => {
+          try { return await consultarPedidoPorNumeroTelefone(numero, telefoneSalvo); }
+          catch { return null; }
+        }));
+        const unicos = new Map<string, Pedido>();
+        for (const pedido of [...lista, ...locais.filter((p): p is Pedido => p !== null)]) {
+          unicos.set(pedido.numero, pedido);
+        }
+        const atualizados = [...unicos.values()].sort((a, b) => Date.parse(b.criadoEm) - Date.parse(a.criadoEm));
+        if (ativo) {
+          setPedidos(atualizados);
+          window.localStorage.setItem("lilhao-historico-pedidos-v1", JSON.stringify(atualizados.slice(0, 20)));
+        }
       } catch {
-        // Keep the last successful view visible during transient network errors.
+        // Keep the last successful cached view visible during transient network errors.
       }
     };
     void atualizarHistorico();
@@ -305,6 +335,14 @@ function Index() {
         nome,
         telefone,
       }));
+      try {
+        const numerosRaw = window.localStorage.getItem("lilhao-historico-numeros-v1");
+        const numeros = numerosRaw ? JSON.parse(numerosRaw) : [];
+        const listaNumeros = Array.isArray(numeros) ? numeros.filter((n): n is string => typeof n === "string") : [];
+        window.localStorage.setItem("lilhao-historico-numeros-v1", JSON.stringify([criado.numero, ...listaNumeros.filter((n) => n !== criado.numero)].slice(0, 20)));
+      } catch {
+        window.localStorage.setItem("lilhao-historico-numeros-v1", JSON.stringify([criado.numero]));
+      }
 
       const novo: Pedido = {
         numero: criado.numero,
@@ -321,7 +359,11 @@ function Index() {
         total: Number(criado.total),
         status: "Recebido",
       };
-      setPedidos((atual) => [novo, ...atual]);
+      setPedidos((atual) => {
+        const atualizados = [novo, ...atual.filter((p) => p.numero !== novo.numero)].slice(0, 20);
+        try { window.localStorage.setItem("lilhao-historico-pedidos-v1", JSON.stringify(atualizados)); } catch {}
+        return atualizados;
+      });
       setPedidoAtual(novo);
 
       if (pagamento === "PIX") {
@@ -374,8 +416,25 @@ function Index() {
     if (contaNome.trim().length >= 2 && [10, 11, 12, 13].includes(contaTelefone.replace(/\D/g, "").length)) {
       setContaCarregando(true);
       try {
-        const lista = await consultarHistoricoPorNomeTelefone(contaNome, contaTelefone);
-        setPedidos(lista.length ? lista : pedidoAtual ? [pedidoAtual] : []);
+        const [lista, locais] = await Promise.all([
+          consultarHistoricoPorNomeTelefone(contaNome, contaTelefone),
+          (async () => {
+            try {
+              const raw = window.localStorage.getItem("lilhao-historico-numeros-v1");
+              const numeros = raw ? JSON.parse(raw) : [];
+              if (!Array.isArray(numeros)) return [];
+              return (await Promise.all(numeros.slice(0, 20).map(async (numero) => {
+                try { return await consultarPedidoPorNumeroTelefone(String(numero), contaTelefone); }
+                catch { return null; }
+              }))).filter((p): p is Pedido => p !== null);
+            } catch { return []; }
+          })(),
+        ]);
+        const unicos = new Map<string, Pedido>();
+        for (const pedido of [...lista, ...locais, ...(pedidoAtual ? [pedidoAtual] : [])]) unicos.set(pedido.numero, pedido);
+        const atualizados = [...unicos.values()].sort((a, b) => Date.parse(b.criadoEm) - Date.parse(a.criadoEm));
+        setPedidos(atualizados);
+        window.localStorage.setItem("lilhao-historico-pedidos-v1", JSON.stringify(atualizados.slice(0, 20)));
         setAba("pedidos");
       } catch (error) {
         setContaErro(error instanceof Error ? error.message : "Não foi possível carregar o histórico.");
