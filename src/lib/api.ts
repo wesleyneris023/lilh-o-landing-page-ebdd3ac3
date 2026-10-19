@@ -239,6 +239,7 @@ export async function consultarPedidoPorNumeroTelefone(numero: string, telefone:
   }
   const response = await fetch(ORDER_FUNCTION_URL, {
     method: "POST",
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
       apikey: import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || "",
@@ -296,6 +297,7 @@ export async function consultarHistoricoPorNomeTelefone(nome: string, telefone: 
   }
   const response = await fetch(ORDER_FUNCTION_URL, {
     method: "POST",
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
       apikey: import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || "",
