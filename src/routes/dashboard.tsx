@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { BarChart3, Check, ClipboardList, ExternalLink, LayoutDashboard, LogIn, Package, Plus, Search, Settings, ShieldAlert, Utensils, X, TrendingUp, Users, ShoppingCart, CircleDollarSign, Clock3, Truck, Store, CalendarDays } from "lucide-react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { categorias, dinheiro, type Pedido, type Produto } from "@/data/store";
-import { atualizarStatusPedido, carregarConfiguracoes, carregarPedidosAdmin, carregarProdutosAdmin, ehAdmin, salvarConfiguracoes, salvarProdutoDb, excluirProdutoDb } from "@/lib/api";
+import { atualizarStatusPedido, atualizarPagamentoPedido, carregarConfiguracoes, carregarPedidosAdmin, carregarProdutosAdmin, ehAdmin, salvarConfiguracoes, salvarProdutoDb, excluirProdutoDb } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 
 type Aba = "visao" | "pedidos" | "cardapio" | "categorias" | "configuracoes";
@@ -117,6 +117,7 @@ function Dashboard() {
   }, [autorizado]);
 
   const pedidosValidos = useMemo(() => pedidos.filter((p) => p.status !== "Cancelado"), [pedidos]);
+  const pedidosPagos = useMemo(() => pedidosValidos.filter((p) => p.pagamentoStatus === "aprovado"), [pedidosValidos]);
 
   const periodoDias = periodoSelecionado === "Hoje"
     ? 1
@@ -142,9 +143,10 @@ function Dashboard() {
     [pedidosValidos, inicioPeriodo],
   );
 
-  const vendasPeriodo = pedidosPeriodo.reduce((s, p) => s + p.total, 0);
+  const pedidosPagosPeriodo = pedidosPagos.filter((p) => new Date(p.criadoEm).getTime() >= inicioPeriodo.getTime());
+  const vendasPeriodo = pedidosPagosPeriodo.reduce((s, p) => s + p.total, 0);
   const itensVendidos = pedidosPeriodo.reduce((s, p) => s + p.itens.reduce((a, i) => a + i.quantidade, 0), 0);
-  const ticketMedio = pedidosPeriodo.length ? vendasPeriodo / pedidosPeriodo.length : 0;
+  const ticketMedio = pedidosPagosPeriodo.length ? vendasPeriodo / pedidosPagosPeriodo.length : 0;
   const pedidosPendentes = pedidosPeriodo.filter((p) => ["Recebido", "Em preparo"].includes(p.status)).length;
   const clientesPeriodo = new Set(pedidosPeriodo.map((p) => p.telefone || p.nome)).size;
 
@@ -154,7 +156,7 @@ function Dashboard() {
       dia.setHours(0, 0, 0, 0);
       dia.setDate(dia.getDate() - (6 - index));
       const chave = dia.toLocaleDateString("pt-BR");
-      const total = pedidosValidos
+      const total = pedidosPagos
         .filter((p) => new Date(p.criadoEm).toLocaleDateString("pt-BR") === chave)
         .reduce((s, p) => s + p.total, 0);
       return {
@@ -162,7 +164,7 @@ function Dashboard() {
         vendas: Number(total.toFixed(2)),
       };
     });
-  }, [pedidosValidos, agora]);
+  }, [pedidosPagos, agora]);
 
   const vendasSemanaAtual = vendasUltimos7Dias.reduce((s, d) => s + d.vendas, 0);
 
@@ -172,11 +174,11 @@ function Dashboard() {
       dia.setHours(0, 0, 0, 0);
       dia.setDate(dia.getDate() - (13 - index));
       const chave = dia.toLocaleDateString("pt-BR");
-      return pedidosValidos
+      return pedidosPagos
         .filter((p) => new Date(p.criadoEm).toLocaleDateString("pt-BR") === chave)
         .reduce((s, p) => s + p.total, 0);
     }).reduce((s, v) => s + v, 0);
-  }, [pedidosValidos, agora]);
+  }, [pedidosPagos, agora]);
 
   const crescimentoSemana = vendasSemanaAnterior > 0
     ? ((vendasSemanaAtual - vendasSemanaAnterior) / vendasSemanaAnterior) * 100
@@ -212,15 +214,15 @@ function Dashboard() {
 
   const pagamentoData = useMemo(() => {
     const mapa = new Map<string, number>();
-    pedidosPeriodo.forEach((p) => mapa.set(p.pagamento || "Não informado", (mapa.get(p.pagamento || "Não informado") || 0) + p.total));
+    pedidosPagosPeriodo.forEach((p) => mapa.set(p.pagamento || "Não informado", (mapa.get(p.pagamento || "Não informado") || 0) + p.total));
     return Array.from(mapa.entries())
       .map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }))
       .sort((a, b) => b.value - a.value);
-  }, [pedidosPeriodo]);
+  }, [pedidosPagosPeriodo]);
 
   const produtosMaisVendidos = useMemo(() => {
     const mapa = new Map<string, { nome: string; quantidade: number; receita: number }>();
-    const janela = pedidosValidos.filter((p) => {
+    const janela = pedidosPagos.filter((p) => {
       const diff = agora.getTime() - new Date(p.criadoEm).getTime();
       return diff >= 0 && diff <= periodoDias * 24 * 60 * 60 * 1000;
     });
@@ -231,11 +233,11 @@ function Dashboard() {
       mapa.set(item.nome, atual);
     }));
     return Array.from(mapa.values()).sort((a, b) => b.quantidade - a.quantidade).slice(0, 5);
-  }, [pedidosValidos, agora, periodoDias]);
+  }, [pedidosPagos, agora, periodoDias]);
 
   const categoriasData = useMemo(() => {
     const mapa = new Map<string, number>();
-    const janela = pedidosValidos.filter((p) => {
+    const janela = pedidosPagos.filter((p) => {
       const diff = agora.getTime() - new Date(p.criadoEm).getTime();
       return diff >= 0 && diff <= periodoDias * 24 * 60 * 60 * 1000;
     });
@@ -247,7 +249,7 @@ function Dashboard() {
       .map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
-  }, [pedidosValidos, produtos, agora, periodoDias]);
+  }, [pedidosPagos, produtos, agora, periodoDias]);
 
   const coresGrafico = ["#ffc400", "#36a3ff", "#9b5cff", "#35d07f", "#ff5b5b", "#8b94a7"];
   const corGrafico = (index: number) => coresGrafico[index % coresGrafico.length] ?? "#8b94a7";
@@ -261,6 +263,18 @@ function Dashboard() {
   async function status(numero:string,status:string) {
     try { await atualizarStatusPedido(numero,status); setPedidos(await carregarPedidosAdmin()); setMensagem("Status atualizado no banco."); }
     catch(e) { setErro(e instanceof Error?e.message:"Não foi possível atualizar."); }
+  }
+  async function pagamentoStatus(numero: string, statusAtual?: Pedido["pagamentoStatus"]) {
+    const novoStatus = statusAtual === "aprovado" ? "pendente" : "aprovado";
+    try {
+      await atualizarPagamentoPedido(numero, novoStatus);
+      const lista = await carregarPedidosAdmin();
+      setPedidos(lista);
+      setPedidoSelecionado((atual) => atual?.numero === numero ? lista.find((p) => p.numero === numero) ?? atual : atual);
+      setMensagem(novoStatus === "aprovado" ? "Pagamento marcado como recebido." : "Pagamento voltou para pendente.");
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível atualizar o pagamento.");
+    }
   }
   async function salvarProduto(produto:Produto) {
     try { await salvarProdutoDb(produto); setProdutos(await carregarProdutosAdmin()); setProdutoEditando(null); setMensagem("Produto salvo no Supabase."); }
@@ -417,7 +431,11 @@ function Dashboard() {
               </div>
             </article>
           </div>
-        </section>}{aba==="pedidos"&&<section className="space-y-4"><div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#141617] px-4"><Search className="size-4 text-white/30"/><input value={busca} onChange={e=>setBusca(e.target.value)} className="min-h-11 flex-1 bg-transparent text-sm outline-none" placeholder="Buscar pedido ou cliente..."/></div><div className="overflow-hidden rounded-2xl border border-white/10 bg-[#141617]">{pedidos.filter(p=>(p.numero+" "+p.nome+" "+p.telefone).toLowerCase().includes(busca.toLowerCase())).map(p=><div key={p.numero} className="grid gap-3 border-b border-white/10 p-5 last:border-0 md:grid-cols-[1fr_1.4fr_.7fr_.8fr] md:items-center"><div><p className="text-xs text-white/35">Pedido</p><b>#{p.numero}</b><p className="text-xs text-white/35">{new Date(p.criadoEm).toLocaleString("pt-BR")}</p></div><div><b>{p.nome}</b><p className="text-xs text-white/40">{p.telefone} • {p.entrega}</p></div><b className="text-[#ffc400]">{dinheiro(p.total)}</b><select value={p.status} onChange={e=>status(p.numero,e.target.value)} className="min-h-10 rounded-lg border border-white/10 bg-[#0d0e0f] px-2 text-xs font-bold">{statusOptions.filter((x) => x !== "Saiu para entrega" || p.entrega === "Entrega").map(x=><option key={x}>{x}</option>)}</select><button onClick={()=>setPedidoSelecionado(p)} className="text-left text-xs font-bold text-[#ffc400] md:col-span-4">Ver detalhes →</button></div>)}{!pedidos.length&&<div className="py-16 text-center text-white/30">Nenhum pedido registrado.</div>}</div></section>}
+        </section>}{aba==="pedidos"&&<section className="space-y-4"><div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#141617] px-4"><Search className="size-4 text-white/30"/><input value={busca} onChange={e=>setBusca(e.target.value)} className="min-h-11 flex-1 bg-transparent text-sm outline-none" placeholder="Buscar pedido ou cliente..."/></div><div className="overflow-hidden rounded-2xl border border-white/10 bg-[#141617]">{pedidos.filter(p=>(p.numero+" "+p.nome+" "+p.telefone).toLowerCase().includes(busca.toLowerCase())).map(p=><div key={p.numero} className="grid gap-3 border-b border-white/10 p-5 last:border-0 md:grid-cols-[1fr_1.4fr_.7fr_.8fr] md:items-center"><div><p className="text-xs text-white/35">Pedido</p><b>#{p.numero}</b><p className="text-xs text-white/35">{new Date(p.criadoEm).toLocaleString("pt-BR")}</p></div><div><b>{p.nome}</b><p className="text-xs text-white/40">{p.telefone} • {p.entrega}</p></div><b className="text-[#ffc400]">{dinheiro(p.total)}</b><select value={p.status} onChange={e=>status(p.numero,e.target.value)} className="min-h-10 rounded-lg border border-white/10 bg-[#0d0e0f] px-2 text-xs font-bold">{statusOptions.filter((x) => x !== "Saiu para entrega" || p.entrega === "Entrega").map(x=><option key={x}>{x}</option>)}</select><div className="flex flex-wrap items-center gap-2 md:col-span-4">
+  <span className={p.pagamentoStatus === "aprovado" ? "rounded-full bg-emerald-400/10 px-2 py-1 text-[10px] font-bold text-emerald-300" : "rounded-full bg-amber-400/10 px-2 py-1 text-[10px] font-bold text-amber-200"}>Pagamento: {p.pagamentoStatus === "aprovado" ? "Recebido" : p.pagamentoStatus === "recusado" ? "Recusado" : p.pagamentoStatus === "cancelado" ? "Cancelado" : "Pendente"}</span>
+  {p.pagamento !== "PIX" && p.status !== "Cancelado" && <button onClick={()=>pagamentoStatus(p.numero,p.pagamentoStatus)} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-bold hover:border-[#ffc400]/40">{p.pagamentoStatus === "aprovado" ? "Marcar pendente" : "Confirmar recebimento"}</button>}
+  <button onClick={()=>setPedidoSelecionado(p)} className="ml-auto text-left text-xs font-bold text-[#ffc400]">Ver detalhes →</button>
+</div></div>)}{!pedidos.length&&<div className="py-16 text-center text-white/30">Nenhum pedido registrado.</div>}</div></section>}
         {aba==="cardapio"&&<section className="space-y-4"><div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#141617] px-4"><Search className="size-4 text-white/30"/><input value={busca} onChange={e=>setBusca(e.target.value)} className="min-h-11 flex-1 bg-transparent text-sm outline-none" placeholder="Buscar produto..."/></div><div className="grid gap-3 lg:grid-cols-2">{filtrados.map(p=><article key={p.id} className="flex items-center gap-4 rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="size-20 shrink-0 overflow-hidden rounded-xl bg-black">{p.imagem?<img src={p.imagem} alt="" className="h-full w-full object-cover"/>:<div className="grid h-full place-items-center text-2xl">🍔</div>}</div><div className="min-w-0 flex-1"><p className="text-xs text-[#ffc400]">{p.categoria}</p><h3 className="font-black">{p.nome}</h3><p className="mt-1 line-clamp-1 text-xs text-white/40">{p.descricao}</p><b className="mt-2 block text-[#ffc400]">{dinheiro(p.preco)}</b></div><button onClick={()=>setProdutoEditando(p)} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-bold">Editar</button><button onClick={()=>excluir(p.id)} className="grid size-9 place-items-center rounded-lg border border-red-400/15 text-red-300"><X className="size-4"/></button></article>)}</div></section>}
         {aba==="categorias"&&<section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{categorias.filter(c=>c!=="Todos").map(cat=><article key={cat} className="rounded-2xl border border-white/10 bg-[#141617] p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-white/35">Categoria</p><h2 className="mt-1 font-black">{cat}</h2></div><span className="grid size-10 place-items-center rounded-xl bg-[#ffc400]/10 text-[#ffc400]"><Utensils className="size-5"/></span></div><p className="mt-4 text-sm text-white/45">{produtos.filter(p=>p.categoria===cat).length} produtos ativos</p></article>)}</section>}
         {aba==="configuracoes"&&<section className="space-y-5">
@@ -545,7 +563,7 @@ function Dashboard() {
           </div>
         </section>
       </div>
-    )}{pedidoSelecionado&&<div className="fixed inset-0 z-[65] flex items-end justify-center bg-black/75" onClick={()=>setPedidoSelecionado(null)}><section onClick={e=>e.stopPropagation()} className="max-h-[85dvh] w-full max-w-xl overflow-y-auto rounded-t-3xl border border-white/10 bg-[#141617] p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-white/40">Detalhes do pedido</p><h2 className="text-2xl font-black">#{pedidoSelecionado.numero}</h2></div><button onClick={()=>setPedidoSelecionado(null)}><X/></button></div><div className="mt-5 space-y-2 text-sm"><p><b>Cliente:</b> {pedidoSelecionado.nome}</p><p><b>Telefone:</b> {pedidoSelecionado.telefone}</p><p><b>Entrega:</b> {pedidoSelecionado.entrega}</p>{pedidoSelecionado.entrega === "Retirada no local" ? <p><b>Local de retirada:</b> {config?.nome || "Lilhão"}</p> : <p><b>Endereço:</b> {pedidoSelecionado.endereco}</p>}<p><b>Pagamento:</b> {pedidoSelecionado.pagamento}</p><p><b>Observação:</b> {pedidoSelecionado.observacao || "—"}</p></div><div className="my-5 space-y-3 border-y border-white/10 py-4">{pedidoSelecionado.itens.map(i=><div key={i.id} className="flex justify-between"><span>{i.quantidade}x {i.nome}</span><b>{dinheiro(i.preco*i.quantidade)}</b></div>)}</div><div className="flex justify-between text-lg font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(pedidoSelecionado.total)}</span></div></section></div>}
+    )}{pedidoSelecionado&&<div className="fixed inset-0 z-[65] flex items-end justify-center bg-black/75" onClick={()=>setPedidoSelecionado(null)}><section onClick={e=>e.stopPropagation()} className="max-h-[85dvh] w-full max-w-xl overflow-y-auto rounded-t-3xl border border-white/10 bg-[#141617] p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-white/40">Detalhes do pedido</p><h2 className="text-2xl font-black">#{pedidoSelecionado.numero}</h2></div><button onClick={()=>setPedidoSelecionado(null)}><X/></button></div><div className="mt-5 space-y-2 text-sm"><p><b>Cliente:</b> {pedidoSelecionado.nome}</p><p><b>Telefone:</b> {pedidoSelecionado.telefone}</p><p><b>Entrega:</b> {pedidoSelecionado.entrega}</p>{pedidoSelecionado.entrega === "Retirada no local" ? <p><b>Local de retirada:</b> {config?.nome || "Lilhão"}</p> : <p><b>Endereço:</b> {pedidoSelecionado.endereco}</p>}<p><b>Pagamento:</b> {pedidoSelecionado.pagamento}</p><p><b>Status financeiro:</b> {pedidoSelecionado.pagamentoStatus === "aprovado" ? "Recebido" : pedidoSelecionado.pagamentoStatus === "recusado" ? "Recusado" : pedidoSelecionado.pagamentoStatus === "cancelado" ? "Cancelado" : "Pendente"}</p>{pedidoSelecionado.pagamento !== "PIX" && pedidoSelecionado.status !== "Cancelado" && <button onClick={()=>pagamentoStatus(pedidoSelecionado.numero,pedidoSelecionado.pagamentoStatus)} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-bold">{pedidoSelecionado.pagamentoStatus === "aprovado" ? "Marcar pagamento pendente" : "Confirmar recebimento"}</button>}<p><b>Observação:</b> {pedidoSelecionado.observacao || "—"}</p></div><div className="my-5 space-y-3 border-y border-white/10 py-4">{pedidoSelecionado.itens.map(i=><div key={i.id} className="flex justify-between"><span>{i.quantidade}x {i.nome}</span><b>{dinheiro(i.preco*i.quantidade)}</b></div>)}</div><div className="flex justify-between text-lg font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(pedidoSelecionado.total)}</span></div></section></div>}
   </div>;
 }
 

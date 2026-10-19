@@ -170,6 +170,164 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (body?.acao === "criar_conta_cliente_nome_telefone") {
+      const nome = typeof body?.nome === "string" ? body.nome.trim().replace(/\s+/g, " ") : "";
+      const telefone = typeof body?.telefone === "string" ? body.telefone.trim() : "";
+      const digitos = telefone.replace(/[^0-9]/g, "");
+      const normalizarTelefone = (value: string) => {
+        const digits = value.replace(/[^0-9]/g, "");
+        return (digits.length === 12 || digits.length === 13) && digits.startsWith("55") ? digits.slice(2) : digits;
+      };
+      if (nome.length < 3 || nome.split(" ").length < 2 || ![10, 11, 12, 13].includes(digitos.length)) {
+        return new Response(JSON.stringify({ error: "Informe nome completo e celular válido com DDD." }), {
+          status: 400, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
+        });
+      }
+
+      const rateKey = `create-account-ip:${await sha256Hex(`${key}:${clientIp}`)}`;
+      const { data: attempts, error: rateError } = await admin.rpc("registrar_tentativa_pedido", { p_rate_limit_key: rateKey });
+      if (rateError) throw rateError;
+      if (Number(attempts) > 10) {
+        return new Response(JSON.stringify({ error: "Muitas tentativas. Aguarde 10 minutos e tente novamente." }), {
+          status: 429, headers: { ...cors, "Content-Type": "application/json", "Retry-After": "600", "Cache-Control": "no-store" },
+        });
+      }
+
+      const primeiroNomeKey = nome.toLocaleLowerCase("pt-BR").split(/\s+/)[0];
+      const telefoneKey = normalizarTelefone(telefone);
+      const { data: clientes, error: clientesError } = await admin.from("clientes").select("id,nome,telefone").limit(1000);
+      if (clientesError) throw clientesError;
+      const clienteTelefone = (clientes || []).find((c: any) => normalizarTelefone(String(c.telefone || "")) === telefoneKey);
+      const primeiroNomeExistente = String(clienteTelefone?.nome || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR").split(/\s+/)[0];
+      if (clienteTelefone && primeiroNomeExistente !== primeiroNomeKey) {
+        return new Response(JSON.stringify({ error: "Este celular já está cadastrado com outro primeiro nome. Confira os dados ou procure o atendimento." }), {
+          status: 409, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
+        });
+      }
+
+      let cliente = clienteTelefone || null;
+      if (!cliente) {
+        const { data, error } = await admin.from("clientes").insert({ nome, telefone }).select("id,nome,telefone").single();
+        if (error) throw error;
+        cliente = data;
+      }
+
+      const { data: candidatos, error: pedidosError } = await admin
+        .from("pedidos")
+        .select("id,numero,nome_cliente,telefone,cliente_id")
+        .is("cliente_id", null)
+        .order("criado_em", { ascending: false })
+        .limit(1000);
+      if (pedidosError) throw pedidosError;
+      const ids = (candidatos || []).filter((p: any) =>
+        String(p.nome_cliente || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR").split(/\s+/)[0] === primeiroNomeKey &&
+        normalizarTelefone(String(p.telefone || "")) === telefoneKey
+      ).map((p: any) => p.id);
+
+      if (ids.length) {
+        const { error: linkError } = await admin.from("pedidos").update({ cliente_id: cliente.id }).in("id", ids).is("cliente_id", null);
+        if (linkError) throw linkError;
+      }
+
+      const { data: rows, error: historyError } = await admin
+        .from("pedidos")
+        .select("numero,criado_em,nome_cliente,telefone,tipo_entrega,pagamento,pagamento_status,status,subtotal,taxa_entrega,total,pedido_itens(id,produto_id,nome_produto,preco_unitario,quantidade,total)")
+        .eq("cliente_id", cliente.id)
+        .order("criado_em", { ascending: false })
+        .limit(100);
+      if (historyError) throw historyError;
+
+      return new Response(JSON.stringify({ cliente: { id: cliente.id, nome: cliente.nome, telefone: cliente.telefone }, pedidos: rows || [] }), {
+        status: 200, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
+      });
+    }
+
+    if (body?.acao === "consultar_historico_nome_telefone") {
+      const nomeInformado = typeof body?.nome === "string" ? body.nome.trim().replace(/\s+/g, " ") : "";
+      const telefoneInformado = typeof body?.telefone === "string" ? body.telefone.trim() : "";
+      const digitosInformados = telefoneInformado.replace(/[^0-9]/g, "");
+      const normalizarTelefone = (value: string) => {
+        const digits = value.replace(/[^0-9]/g, "");
+        return (digits.length === 12 || digits.length === 13) && digits.startsWith("55") ? digits.slice(2) : digits;
+      };
+      if (nomeInformado.length < 2 || ![10, 11, 12, 13].includes(digitosInformados.length)) {
+        return new Response(JSON.stringify({ error: "Informe seu primeiro nome e o celular com DDD usado na compra." }), {
+          status: 400, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
+        });
+      }
+
+      const lookupRateKey = `history-ip:${await sha256Hex(`${key}:${clientIp}`)}`;
+      const { data: lookupAttempts, error: lookupRateError } = await admin.rpc("registrar_tentativa_pedido", {
+        p_rate_limit_key: lookupRateKey,
+      });
+      if (lookupRateError) throw lookupRateError;
+      if (Number(lookupAttempts) > 10) {
+        return new Response(JSON.stringify({ error: "Muitas tentativas de consulta. Aguarde 10 minutos e tente novamente." }), {
+          status: 429, headers: { ...cors, "Content-Type": "application/json", "Retry-After": "600", "Cache-Control": "no-store" },
+        });
+      }
+
+      const primeiroNomeKey = nomeInformado.toLocaleLowerCase("pt-BR").split(/\s+/)[0];
+      const telefoneKey = normalizarTelefone(telefoneInformado);
+      const { data: pedidos, error: historyError } = await admin.rpc("consultar_historico_nome_telefone", {
+        p_primeiro_nome: primeiroNomeKey,
+        p_telefone: telefoneKey,
+      });
+      if (historyError) throw historyError;
+      return new Response(JSON.stringify({ pedidos }), {
+        status: 200, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
+      });
+    }
+
+    if (body?.acao === "consultar_pedido_por_telefone") {
+      const numero = typeof body?.numero === "string" ? body.numero.trim().toUpperCase() : "";
+      const telefoneInformado = typeof body?.telefone === "string" ? body.telefone.trim() : "";
+      const digitosInformados = telefoneInformado.replace(/[^0-9]/g, "");
+      const telefoneNormalizado = (value: string) => {
+        const digits = value.replace(/[^0-9]/g, "");
+        return (digits.length === 12 || digits.length === 13) && digits.startsWith("55") ? digits.slice(2) : digits;
+      };
+
+      if (!/^LH-\d{8}-\d{4,}$/.test(numero) || ![10, 11, 12, 13].includes(digitosInformados.length)) {
+        return new Response(JSON.stringify({ error: "Não encontramos um pedido com esses dados. Confira o número e o celular." }), {
+          status: 404,
+          headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
+
+      const lookupRateKey = `lookup-ip:${await sha256Hex(`${key}:${clientIp}`)}`;
+      const { data: lookupAttempts, error: lookupRateError } = await admin.rpc("registrar_tentativa_pedido", {
+        p_rate_limit_key: lookupRateKey,
+      });
+      if (lookupRateError) throw lookupRateError;
+      if (Number(lookupAttempts) > 10) {
+        return new Response(JSON.stringify({ error: "Muitas tentativas de consulta. Aguarde 10 minutos e tente novamente." }), {
+          status: 429,
+          headers: { ...cors, "Content-Type": "application/json", "Retry-After": "600" },
+        });
+      }
+
+      const { data: row, error: lookupError } = await admin
+        .from("pedidos")
+        .select("numero,criado_em,nome_cliente,telefone,tipo_entrega,pagamento,pagamento_status,status,subtotal,taxa_entrega,total,pedido_itens(id,produto_id,nome_produto,preco_unitario,quantidade,total)")
+        .eq("numero", numero)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+
+      if (!row || telefoneNormalizado(String(row.telefone || "")) !== telefoneNormalizado(telefoneInformado)) {
+        return new Response(JSON.stringify({ error: "Não encontramos um pedido com esses dados. Confira o número e o celular." }), {
+          status: 404,
+          headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
+
+      // Return only the details needed for tracking; never expose delivery address or notes.
+      return new Response(JSON.stringify({ pedido: row }), {
+        status: 200,
+        headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
+      });
+    }
+
     if (body?.acao === "consultar_pagamento") {
       const token = typeof body?.cliente_token === "string" ? body.cliente_token.trim() : "";
       const numero = typeof body?.numero === "string" ? body.numero.trim() : "";
@@ -260,6 +418,45 @@ Deno.serve(async (req: Request) => {
 
     if (error) throw error;
 
+    // If the customer has already created a name-and-phone account, attach this
+    // new order to that profile without changing any existing order ownership.
+    const nomePedido = typeof body?.nome === "string" ? body.nome.trim().replace(/\s+/g, " ") : "";
+    const telefonePedido = String(verifiedPhone || body?.telefone || "");
+    const normalizarTelefoneConta = (value: string) => {
+      const digits = value.replace(/[^0-9]/g, "");
+      return (digits.length === 12 || digits.length === 13) && digits.startsWith("55") ? digits.slice(2) : digits;
+    };
+    if (data?.numero && nomePedido.split(" ").length >= 2 && [10, 11, 12, 13].includes(telefonePedido.replace(/[^0-9]/g, "").length)) {
+      const { data: contas, error: contaError } = await admin.from("clientes").select("id,nome,telefone").limit(1000);
+      if (contaError) throw contaError;
+      let conta = (contas || []).find((c: any) =>
+        String(c.nome || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR") === nomePedido.toLocaleLowerCase("pt-BR") &&
+        normalizarTelefoneConta(String(c.telefone || "")) === normalizarTelefoneConta(telefonePedido)
+      );
+
+      // First purchase: create the customer profile automatically from the
+      // checkout name and phone, then link this order to that profile.
+      if (!conta) {
+        const samePhone = (contas || []).find((c: any) =>
+          normalizarTelefoneConta(String(c.telefone || "")) === normalizarTelefoneConta(telefonePedido)
+        );
+        if (!samePhone) {
+          const { data: novoCliente, error: criarClienteError } = await admin
+            .from("clientes")
+            .insert({ nome: nomePedido, telefone: telefonePedido })
+            .select("id,nome,telefone")
+            .single();
+          if (criarClienteError) throw criarClienteError;
+          conta = novoCliente;
+        }
+      }
+
+      if (conta) {
+        const { error: linkError } = await admin.from("pedidos").update({ cliente_id: conta.id }).eq("numero", String(data.numero)).is("cliente_id", null);
+        if (linkError) throw linkError;
+      }
+    }
+
     if (body.pagamento === "PIX") {
       // Idempotent retry: reuse the PIX already created for this order.
       if (data?.idempotente === true) {
@@ -335,8 +532,10 @@ Deno.serve(async (req: Request) => {
       headers: { ...cors, "Content-Type": "application/json" },
     });
   } catch (error) {
+    console.error("[criar-pedido] Falha ao processar ação", error);
+    const detalhe = error instanceof Error ? error.message : String(error ?? "");
     return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : "Erro ao processar pedido.",
+      error: detalhe || "Erro ao processar pedido.",
     }), {
       status: 400,
       headers: { ...cors, "Content-Type": "application/json" },
