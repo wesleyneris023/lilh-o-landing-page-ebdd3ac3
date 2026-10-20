@@ -184,7 +184,7 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const rateKey = `create-account-ip:${await sha256Hex(`${key}:${clientIp}`)}`;
+      const rateKey = `create-account-v2:${await sha256Hex(`${key}:${clientIp}:${telefoneKey}`)}`;
       const { data: attempts, error: rateError } = await admin.rpc("registrar_tentativa_pedido", { p_rate_limit_key: rateKey });
       if (rateError) throw rateError;
       if (Number(attempts) > 10) {
@@ -256,7 +256,7 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const lookupRateKey = `history-ip:${await sha256Hex(`${key}:${clientIp}`)}`;
+      const lookupRateKey = `history-v2:${await sha256Hex(`${key}:${clientIp}:${telefoneKey}`)}`;
       const { data: lookupAttempts, error: lookupRateError } = await admin.rpc("registrar_tentativa_pedido", {
         p_rate_limit_key: lookupRateKey,
       });
