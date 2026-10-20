@@ -184,6 +184,7 @@ Deno.serve(async (req: Request) => {
         });
       }
 
+      const telefoneKey = normalizarTelefone(telefone);
       const rateKey = `create-account-v2:${await sha256Hex(`${key}:${clientIp}:${telefoneKey}`)}`;
       const { data: attempts, error: rateError } = await admin.rpc("registrar_tentativa_pedido", { p_rate_limit_key: rateKey });
       if (rateError) throw rateError;
@@ -194,7 +195,6 @@ Deno.serve(async (req: Request) => {
       }
 
       const primeiroNomeKey = nome.toLocaleLowerCase("pt-BR").split(/\s+/)[0];
-      const telefoneKey = normalizarTelefone(telefone);
       const { data: clientes, error: clientesError } = await admin.from("clientes").select("id,nome,telefone").limit(1000);
       if (clientesError) throw clientesError;
       const clienteTelefone = (clientes || []).find((c: any) => normalizarTelefone(String(c.telefone || "")) === telefoneKey);
@@ -256,6 +256,7 @@ Deno.serve(async (req: Request) => {
         });
       }
 
+      const telefoneKey = normalizarTelefone(telefoneInformado);
       const lookupRateKey = `history-v2:${await sha256Hex(`${key}:${clientIp}:${telefoneKey}`)}`;
       const { data: lookupAttempts, error: lookupRateError } = await admin.rpc("registrar_tentativa_pedido", {
         p_rate_limit_key: lookupRateKey,
@@ -268,7 +269,6 @@ Deno.serve(async (req: Request) => {
       }
 
       const primeiroNomeKey = nomeInformado.toLocaleLowerCase("pt-BR").split(/\s+/)[0];
-      const telefoneKey = normalizarTelefone(telefoneInformado);
       // Use the history RPC only to identify the matching order numbers, then
       // read the live rows from pedidos. This prevents stale status values from
       // the RPC response from keeping the customer's badge out of sync.
