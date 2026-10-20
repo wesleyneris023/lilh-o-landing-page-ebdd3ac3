@@ -162,25 +162,49 @@ function Index() {
   }, []);
 
   useEffect(() => {
+    // Restore each saved value independently: a damaged order cache must never
+    // erase the customer's saved name/phone or force another account lookup.
+    let clienteRestaurado = false;
     try {
       const saved = window.localStorage.getItem("lilhao-historico-cliente-v1");
       if (saved) {
         const parsed = JSON.parse(saved) as { nome?: string; telefone?: string };
-        if (parsed.nome) setContaNome(parsed.nome);
-        if (parsed.telefone) setContaTelefone(parsed.telefone);
+        if (parsed.nome?.trim() && parsed.telefone?.trim()) {
+          setContaNome(parsed.nome);
+          setContaTelefone(parsed.telefone);
+          setContaConsultou(true);
+          setContaCriada(true);
+          clienteRestaurado = true;
+        }
       }
-      // Restore the last known order cards immediately; the server refresh below
-      // replaces them with current statuses after a reload.
+    } catch {
+      // Leave the stored identity untouched; the user can still recover it.
+    }
+
+    try {
+      // Keep the last successful cards visible immediately while the live
+      // request refreshes statuses from the server.
       const cachedOrders = window.localStorage.getItem("lilhao-historico-pedidos-v1");
       if (cachedOrders) {
         const parsedOrders = JSON.parse(cachedOrders) as Pedido[];
         if (Array.isArray(parsedOrders)) setPedidos(parsedOrders.slice(0, 20));
       }
-      const abaSalva = window.localStorage.getItem("lilhao-aba-atual-v1");
-      if (abaSalva === "pedidos" || abaSalva === "conta") setAba(abaSalva);
     } catch {
-      window.localStorage.removeItem("lilhao-historico-cliente-v1");
-      window.localStorage.removeItem("lilhao-aba-atual-v1");
+      // Ignore only a malformed order cache; do not clear the customer identity.
+    }
+
+    try {
+      const abaSalva = window.localStorage.getItem("lilhao-aba-atual-v1");
+      // If a customer identity was previously verified, restore the order
+      // history directly rather than returning to the account-entry screen.
+      if (clienteRestaurado) {
+        setAba("pedidos");
+        window.localStorage.setItem("lilhao-aba-atual-v1", "pedidos");
+      } else if (abaSalva === "pedidos" || abaSalva === "conta") {
+        setAba(abaSalva);
+      }
+    } catch {
+      if (clienteRestaurado) setAba("pedidos");
     } finally {
       setPreferenciasCarregadas(true);
     }
@@ -218,354 +242,3 @@ function Index() {
               return Array.isArray(values) ? values.filter((n): n is string => typeof n === "string").slice(0, 20) : [];
             } catch { return []; }
           }),
-        ]);
-        // Recover orders created on this browser even if the legacy account
-        // association RPC temporarily returns an incomplete history.
-        const locais = await Promise.all(numerosSalvos.map(async (numero) => {
-          try { return await consultarPedidoPorNumeroTelefone(numero, telefoneSalvo); }
-          catch { return null; }
-        }));
-        const unicos = new Map<string, Pedido>();
-        for (const pedido of [...lista, ...locais.filter((p): p is Pedido => p !== null)]) {
-          unicos.set(pedido.numero, pedido);
-        }
-        const atualizados = [...unicos.values()].sort((a, b) => Date.parse(b.criadoEm) - Date.parse(a.criadoEm));
-        if (ativo) {
-          setPedidos(atualizados);
-          window.localStorage.setItem("lilhao-historico-pedidos-v1", JSON.stringify(atualizados.slice(0, 20)));
-        }
-      } catch {
-        // Keep the last successful cached view visible during transient network errors.
-      } finally {
-        requisicaoEmAndamento = false;
-        if (ativo) setHistoricoCarregando(false);
-      }
-    };
-    void atualizarHistorico();
-    const timer = window.setInterval(() => { void atualizarHistorico(); }, 3000);
-    return () => {
-      ativo = false;
-      window.clearInterval(timer);
-    };
-  }, [aba, contaNome, contaTelefone, preferenciasCarregadas]);
-
-
-  const filtrados = useMemo(() => menu.filter((p) => (categoria === "Todos" || p.categoria === categoria) && `${p.nome} ${p.descricao}`.toLowerCase().includes(busca.toLowerCase())), [categoria, busca, menu]);
-  const quantidade = sacola.reduce((t, i) => t + i.quantidade, 0);
-  const subtotal = sacola.reduce((t, i) => t + i.preco * i.quantidade, 0);
-  const taxaEntrega = tipoEntrega === "entrega" ? taxaEntregaConfigurada : 0;
-  const total = subtotal + taxaEntrega;
-  const lojaAberta = useMemo(() => {
-    if (!configCarregada || !aceitaPedidos) return false;
-    const agora = new Date(agoraTick);
-    const minutos = agora.getHours() * 60 + agora.getMinutes();
-    const [abH, abM] = horarioAbertura.split(":").map(Number);
-    const [feH, feM] = horarioFechamento.split(":").map(Number);
-    const abertura = abH * 60 + abM;
-    const fechamento = feH * 60 + feM;
-    if (abertura === fechamento) return true;
-    return abertura < fechamento ? minutos >= abertura && minutos < fechamento : minutos >= abertura || minutos < fechamento;
-  }, [agoraTick, configCarregada, aceitaPedidos, horarioAbertura, horarioFechamento]);
- 
-  async function consultarHistoricoConta() {
-    setContaErro("");
-    setContaConsultou(false);
-    if (contaNome.trim().split(/\s+/).length < 2) {
-      setContaErro("Informe seu nome completo, com nome e sobrenome.");
-      return;
-    }
-    if (![10, 11, 12, 13].includes(contaTelefone.replace(/\D/g, "").length)) {
-      setContaErro("Informe um celular válido com DDD.");
-      return;
-    }
-    setContaCarregando(true);
-    try {
-      const resultado = await criarContaCliente(contaNome, contaTelefone);
-      setPedidos(resultado.pedidos);
-      setContaCriada(true);
-      setContaConsultou(true);
-      window.localStorage.setItem("lilhao-historico-cliente-v1", JSON.stringify({
-        id: resultado.cliente.id,
-        nome: resultado.cliente.nome,
-        telefone: resultado.cliente.telefone,
-      }));
-      if (resultado.pedidos.length) {
-        setAba("pedidos");
-      } else {
-        setContaErro("");
-      }
-    } catch (error) {
-      setContaErro(error instanceof Error ? error.message : "Não foi possível criar sua conta agora.");
-    } finally {
-      setContaCarregando(false);
-    }
-  }
-
-  function adicionar(produto: Produto) { setSacola((atual) => { const existe = atual.find((i) => i.id === produto.id); return existe ? atual.map((i) => i.id === produto.id ? { ...i, quantidade: i.quantidade + 1 } : i) : [...atual, { ...produto, quantidade: 1 }]; }); }
-  function alterarQuantidade(id: string, delta: number) { setSacola((atual) => atual.map((i) => i.id === id ? { ...i, quantidade: i.quantidade + delta } : i).filter((i) => i.quantidade > 0)); }
-  function abrirCheckout() {
-    setErroCheckout("");
-    if (!configCarregada) {
-      setErroCheckout("A loja ainda está carregando. Tente novamente em alguns segundos.");
-      return;
-    }
-    if (!lojaAberta) {
-      setErroCheckout(aceitaPedidos ? `Estamos fechados. Atendimento: ${horarioAbertura} às ${horarioFechamento}.` : "A lanchonete está temporariamente sem receber pedidos.");
-      return;
-    }
-    if (pedidoMinimo > 0 && subtotal < pedidoMinimo) {
-      setErroCheckout(`O pedido mínimo é de ${dinheiro(pedidoMinimo)}.`);
-      return;
-    }
-    if (!sacola.length) return;
-    setSacolaAberta(false);
-    setPedidoIdempotencyKey(crypto.randomUUID());
-    setCheckoutEtapa(1);
-    setAba("inicio");
-  }
-  function continuarEntrega() { if (!nome.trim() || !telefone.trim() || (tipoEntrega === "entrega" && (!rua.trim() || !numero.trim() || !bairro.trim()))) return; setCheckoutEtapa(2); }
-  function continuarPagamento() { if (!pagamento) return; setCheckoutEtapa(3); }
-  async function confirmarPedido() {
-    if (!sacola.length || enviandoPedido) return;
-    setErroCheckout("");
-    setEnviandoPedido(true);
-    const idempotencyKey = pedidoIdempotencyKey || crypto.randomUUID();
-    if (!pedidoIdempotencyKey) setPedidoIdempotencyKey(idempotencyKey);
-    if (pagamento === "PIX" && !email.trim()) {
-      setErroCheckout("Informe um e-mail válido para gerar o PIX.");
-      setEnviandoPedido(false);
-      return;
-    }
-    const enderecoTexto = tipoEntrega === "retirada"
-      ? "Retirada no local"
-      : rua + ", " + numero + " — " + bairro + (complemento ? ", " + complemento : "") + (referencia ? " (Ref.: " + referencia + ")" : "");
-    try {
-      const criado = await criarPedidoReal({
-        nome,
-        telefone,
-        email: email.trim(),
-        tipo_entrega: tipoEntrega,
-        endereco: { cep, rua, numero, bairro, complemento, referencia, texto: enderecoTexto },
-        pagamento,
-        observacao,
-        itens: sacola.map((item) => ({ id: item.id, quantidade: item.quantidade })),
-        idempotency_key: idempotencyKey,
-      });
-      // Preserve checkout identity so "Pedidos" can retrieve history after the first purchase.
-      setContaNome(nome);
-      setContaTelefone(telefone);
-      window.localStorage.setItem("lilhao-historico-cliente-v1", JSON.stringify({
-        nome,
-        telefone,
-      }));
-      try {
-        const numerosRaw = window.localStorage.getItem("lilhao-historico-numeros-v1");
-        const numeros = numerosRaw ? JSON.parse(numerosRaw) : [];
-        const listaNumeros = Array.isArray(numeros) ? numeros.filter((n): n is string => typeof n === "string") : [];
-        window.localStorage.setItem("lilhao-historico-numeros-v1", JSON.stringify([criado.numero, ...listaNumeros.filter((n) => n !== criado.numero)].slice(0, 20)));
-      } catch {
-        window.localStorage.setItem("lilhao-historico-numeros-v1", JSON.stringify([criado.numero]));
-      }
-
-      const novo: Pedido = {
-        numero: criado.numero,
-        criadoEm: new Date().toISOString(),
-        itens: sacola,
-        nome,
-        telefone,
-        entrega: tipoEntrega === "retirada" ? "Retirada no local" : "Entrega",
-        endereco: enderecoTexto,
-        pagamento: pagamento + (pagamento === "Dinheiro" && troco ? " (troco para " + troco + ")" : ""),
-        observacao,
-        subtotal: Number(criado.subtotal),
-        taxa: Number(criado.taxa_entrega),
-        total: Number(criado.total),
-        status: "Recebido",
-      };
-      setPedidos((atual) => {
-        const atualizados = [novo, ...atual.filter((p) => p.numero !== novo.numero)].slice(0, 20);
-        try { window.localStorage.setItem("lilhao-historico-pedidos-v1", JSON.stringify(atualizados)); } catch {}
-        return atualizados;
-      });
-      setPedidoAtual(novo);
-
-      if (pagamento === "PIX") {
-        if (!criado.pix?.qr_code) throw new Error("O Mercado Pago não retornou o código PIX.");
-        setPixData(criado.pix);
-        setPixStatus("pendente");
-        setCheckoutEtapa(4);
-        return;
-      }
-
-      setSacola([]);
-      setPedidoIdempotencyKey("");
-      setCheckoutEtapa(5);
-    } catch (error) {
-      setErroCheckout(error instanceof Error ? error.message : "Não foi possível enviar o pedido. Tente novamente.");
-    } finally {
-      setEnviandoPedido(false);
-    }
-  }
-
-  async function verificarPagamentoPix() {
-    if (!pedidoAtual || verificandoPix) return;
-    setVerificandoPix(true);
-    setErroCheckout("");
-    try {
-      const resultado = await consultarStatusPagamentoPix(pedidoAtual.numero);
-      const status = resultado.pagamento_status as typeof pixStatus;
-      setPixStatus(status);
-      if (status === "aprovado") {
-        setSacola([]);
-        setPedidoIdempotencyKey("");
-        setCheckoutEtapa(5);
-      } else if (status === "recusado" || status === "cancelado") {
-        setErroCheckout("O pagamento PIX não foi aprovado. Você pode voltar e tentar novamente.");
-      } else {
-        setErroCheckout("O pagamento ainda está pendente. Se você já pagou, aguarde alguns segundos e verifique novamente.");
-      }
-    } catch (error) {
-      setErroCheckout(error instanceof Error ? error.message : "Não foi possível verificar o pagamento agora.");
-    } finally {
-      setVerificandoPix(false);
-    }
-  }
-
-  async function abrirMeusPedidos() {
-    setCheckoutEtapa(0);
-    setSacolaAberta(false);
-    setPixData(null);
-    setPixStatus("pendente");
-    if (contaNome.trim().length >= 2 && [10, 11, 12, 13].includes(contaTelefone.replace(/\D/g, "").length)) {
-      setContaCarregando(true);
-      try {
-        const [lista, locais] = await Promise.all([
-          consultarHistoricoPorNomeTelefone(contaNome, contaTelefone),
-          (async () => {
-            try {
-              const raw = window.localStorage.getItem("lilhao-historico-numeros-v1");
-              const numeros = raw ? JSON.parse(raw) : [];
-              if (!Array.isArray(numeros)) return [];
-              return (await Promise.all(numeros.slice(0, 20).map(async (numero) => {
-                try { return await consultarPedidoPorNumeroTelefone(String(numero), contaTelefone); }
-                catch { return null; }
-              }))).filter((p): p is Pedido => p !== null);
-            } catch { return []; }
-          })(),
-        ]);
-        const unicos = new Map<string, Pedido>();
-        for (const pedido of [...lista, ...locais, ...(pedidoAtual ? [pedidoAtual] : [])]) unicos.set(pedido.numero, pedido);
-        const atualizados = [...unicos.values()].sort((a, b) => Date.parse(b.criadoEm) - Date.parse(a.criadoEm));
-        setPedidos(atualizados);
-        window.localStorage.setItem("lilhao-historico-pedidos-v1", JSON.stringify(atualizados.slice(0, 20)));
-        setAba("pedidos");
-      } catch (error) {
-        setContaErro(error instanceof Error ? error.message : "Não foi possível carregar o histórico.");
-        setAba("conta");
-      } finally {
-        setContaCarregando(false);
-      }
-    } else {
-      setAba("conta");
-    }
-  }
-
-  const inputClass = "mt-1.5 min-h-12 w-full rounded-xl border border-white/10 bg-[#101112] px-4 text-base text-white outline-none placeholder:text-white/30 focus:border-[#ffc400]";
-  const actionClass = "min-h-12 rounded-xl bg-[#ffc400] px-5 font-black text-black transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-40";
-  const quietClass = "min-h-12 rounded-xl border border-white/10 bg-white/[.04] px-5 font-bold text-white/75";
-
-  return <div className="min-h-screen bg-[#080909] pb-24 text-white md:pb-0">
-    {erroMenu && checkoutEtapa === 0 && <div className="mx-auto max-w-7xl px-4 pt-3 sm:px-6"><div className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-xs text-amber-200">{erroMenu}</div></div>}
-    {checkoutEtapa === 0 && <div className="mx-auto max-w-7xl px-4 pt-3 sm:px-6"><div className={lojaAberta ? "rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-xs text-emerald-200" : "rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-xs text-amber-200"}>{lojaAberta ? <>● Estamos recebendo pedidos agora • {horarioAbertura} às {horarioFechamento}</> : <>{aceitaPedidos ? <>Estamos fechados no momento • Atendimento: {horarioAbertura} às {horarioFechamento}</> : <>Pedidos temporariamente pausados pela lanchonete.</>}</>}</div></div>}
-    {erroCheckout && checkoutEtapa > 0 && <div className="mx-auto max-w-3xl px-3 pt-3 sm:px-6"><div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{erroCheckout}</div></div>}
-    <header className="sticky top-0 z-40 border-b border-white/10 bg-[#101010]/95 backdrop-blur-xl"><div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6"><div className="flex items-center gap-2"><button type="button" onClick={() => { setAba("conta"); setCheckoutEtapa(0); }} aria-label="Abrir minha conta" title="Minha conta" className="grid size-9 shrink-0 place-items-center rounded-full border border-[#ffc400]/40 bg-[#17150d] text-[#ffc400]"><User className="size-4"/></button><button onClick={() => { setAba("inicio"); setCheckoutEtapa(0); }} className="flex items-center gap-2.5 text-white"><span className="grid size-10 place-items-center rounded-full border-2 border-[#ffc400] bg-[#17150d] text-lg font-black text-[#ffc400]">L!</span><span><span className="block text-2xl font-black leading-none">Lilhão<span className="text-[#ffc400]">.</span></span><span className="mt-1 hidden text-[9px] font-bold uppercase tracking-[.16em] text-white/65 sm:block">Sabor que todo mundo aprova</span></span></button></div><nav aria-label="Navegação principal" className="hidden items-center gap-1 xl:flex"><button onClick={() => { setAba("inicio"); setCheckoutEtapa(0); }} className={`rounded-full px-4 py-2.5 text-sm font-bold transition ${aba === "inicio" ? "bg-[#ffc400] text-black" : "text-white/70 hover:bg-white/10 hover:text-white"}`}><Home className="mr-2 inline size-4"/>Início</button><button onClick={() => setCategoriasAbertas(true)} className="rounded-full px-4 py-2.5 text-sm font-bold text-white/70 transition hover:bg-white/10 hover:text-white"><Utensils className="mr-2 inline size-4"/>Categorias</button><button onClick={abrirMeusPedidos} className={`rounded-full px-4 py-2.5 text-sm font-bold transition ${aba === "pedidos" ? "bg-[#ffc400] text-black" : "text-white/70 hover:bg-white/10 hover:text-white"}`}><ClipboardList className="mr-2 inline size-4"/>Pedidos</button><button onClick={() => { setAba("conta"); setCheckoutEtapa(0); }} className={`rounded-full px-4 py-2.5 text-sm font-bold transition ${aba === "conta" ? "bg-[#ffc400] text-black" : "text-white/70 hover:bg-white/10 hover:text-white"}`}><User className="mr-2 inline size-4"/>Conta</button></nav><div className="flex shrink-0 items-center gap-2"><a href="/dashboard" className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-[#ffc400]/50 px-3 text-[11px] font-bold text-[#ffc400] transition hover:bg-[#ffc400] hover:text-black sm:min-h-10 sm:px-4 sm:text-xs" aria-label="Acessar área do proprietário" title="Área do proprietário"><LayoutDashboard className="size-4"/><span className="hidden sm:inline">Área do proprietário</span><span className="sm:hidden">Admin</span></a><button type="button" onClick={() => setSacolaAberta(true)} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-[#ffc400] px-3.5 text-sm font-black text-black"><ShoppingBag className="size-5"/><span className="grid min-h-6 min-w-6 place-items-center rounded-full bg-black px-1 text-xs font-black text-[#ffc400]">{quantidade}</span></button></div></div></header>
-
-    {checkoutEtapa > 0 ? <main className="mx-auto min-h-[calc(100dvh-70px)] max-w-3xl px-3 pb-6 sm:px-6">
-      <div className="sticky top-[65px] z-20 -mx-3 border-b border-white/10 bg-[#080909]/95 px-3 py-4 backdrop-blur sm:mx-0 sm:px-0"><div className="flex items-center gap-3"><button onClick={() => checkoutEtapa === 1 ? setCheckoutEtapa(0) : checkoutEtapa === 4 ? setCheckoutEtapa(3) : checkoutEtapa === 5 ? setCheckoutEtapa(0) : setCheckoutEtapa(checkoutEtapa - 1)} aria-label="Voltar" className="grid size-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/5"><ArrowLeft className="size-5"/></button><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-[#ffc400]">Lilhão • Seu pedido</p><h1 className="text-xl font-black">{checkoutEtapa === 4 ? "Pagamento via PIX" : checkoutEtapa === 5 ? "Pedido enviado" : "Finalizar pedido"}</h1></div></div>
-        {checkoutEtapa < 4 && <div className="mt-5 grid grid-cols-3 gap-2">{["Entrega", "Pagamento", "Confirmação"].map((label, idx) => { const num = idx + 1; const done = checkoutEtapa > num; const active = checkoutEtapa === num; return <div key={label} className="text-center"><div className={`mx-auto grid size-9 place-items-center rounded-full text-sm font-black ${active || done ? "bg-[#ffc400] text-black" : "bg-[#202223] text-white/45"}`}>{done ? <Check className="size-4"/> : num}</div><p className={`mt-1.5 text-xs font-bold ${active ? "text-white" : "text-white/45"}`}>{label}</p><div className={`mt-2 h-0.5 rounded ${done ? "bg-[#ffc400]" : "bg-white/10"}`}/></div>; })}</div>}
-      </div>
-
-      {checkoutEtapa === 1 && <section className="space-y-5 py-5"><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><h2 className="text-lg font-black">Seus dados</h2><div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold text-white/60">Nome completo *<input required value={nome} onChange={e => setNome(e.target.value)} className={inputClass} placeholder="Como podemos te chamar?"/></label><label className="text-xs font-bold text-white/60">Telefone / WhatsApp *<input required value={telefone} onChange={e => setTelefone(e.target.value)} className={inputClass} placeholder="(00) 00000-0000" inputMode="tel"/></label></div></div>
-        <div><h2 className="mb-3 text-lg font-black">Como deseja receber?</h2><div className="grid gap-3 sm:grid-cols-2"><button onClick={() => setTipoEntrega("entrega")} className={`flex min-h-[76px] items-center gap-3 rounded-2xl border p-4 text-left ${tipoEntrega === "entrega" ? "border-[#ffc400] bg-[#ffc400]/10" : "border-white/10 bg-[#141617]"}`}><MapPin className="size-6 text-[#ffc400]"/><span className="flex-1"><b>Receber no endereço</b><small className="mt-1 block text-white/45">Taxa de entrega: {dinheiro(taxaEntregaConfigurada)}</small></span><span className={`size-5 rounded-full border-2 ${tipoEntrega === "entrega" ? "border-[#ffc400] bg-[#ffc400] shadow-[inset_0_0_0_4px_#111]" : "border-white/25"}`}/></button><button onClick={() => setTipoEntrega("retirada")} className={`flex min-h-[76px] items-center gap-3 rounded-2xl border p-4 text-left ${tipoEntrega === "retirada" ? "border-[#ffc400] bg-[#ffc400]/10" : "border-white/10 bg-[#141617]"}`}><Store className="size-6 text-[#ffc400]"/><span className="flex-1"><b>Retirar no local</b><small className="mt-1 block text-white/45">Sem taxa de entrega</small></span><span className={`size-5 rounded-full border-2 ${tipoEntrega === "retirada" ? "border-[#ffc400] bg-[#ffc400] shadow-[inset_0_0_0_4px_#111]" : "border-white/25"}`}/></button></div></div>
-        {tipoEntrega === "entrega" && <div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><h2 className="text-lg font-black">Endereço de entrega</h2><div className="mt-3 grid grid-cols-2 gap-3"><label className="col-span-2 text-xs font-bold text-white/60 sm:col-span-1">CEP (opcional)<input value={cep} onChange={e => setCep(e.target.value)} className={inputClass} placeholder="00000-000" inputMode="numeric"/></label><label className="col-span-2 text-xs font-bold text-white/60 sm:col-span-1">Bairro *<input required value={bairro} onChange={e => setBairro(e.target.value)} className={inputClass} placeholder="Seu bairro"/></label><label className="col-span-2 text-xs font-bold text-white/60 sm:col-span-1">Rua / Avenida *<input required value={rua} onChange={e => setRua(e.target.value)} className={inputClass} placeholder="Nome da rua"/></label><label className="text-xs font-bold text-white/60">Número *<input required value={numero} onChange={e => setNumero(e.target.value)} className={inputClass} placeholder="Nº"/></label><label className="text-xs font-bold text-white/60">Complemento<input value={complemento} onChange={e => setComplemento(e.target.value)} className={inputClass} placeholder="Casa, ap..."/></label><label className="col-span-2 text-xs font-bold text-white/60">Ponto de referência<input value={referencia} onChange={e => setReferencia(e.target.value)} className={inputClass} placeholder="Próximo de..."/></label></div><p className="mt-3 text-xs text-white/45">Confira o endereço antes de continuar. A taxa de entrega é definida pela lanchonete.{pedidoMinimo > 0 ? ` Pedido mínimo: ${dinheiro(pedidoMinimo)}.` : ""}</p></div>}
-        <button onClick={continuarEntrega} disabled={!lojaAberta || !nome.trim() || !telefone.trim() || (tipoEntrega === "entrega" && (!rua.trim() || !numero.trim() || !bairro.trim()))} className={`${actionClass} w-full`}>Continuar <ArrowRight className="ml-1 inline size-4"/></button>
-      </section>}
-
-      {checkoutEtapa === 2 && <section className="space-y-5 py-5"><div><h2 className="text-lg font-black">Forma de pagamento</h2><p className="mt-1 text-sm text-white/45">Selecione como deseja pagar.</p></div><div className="space-y-3">{formasPagamento.map(nome => { const desc = nome === "PIX" ? "Pagamento via PIX" : nome === "Crédito" ? "Cartão de crédito na entrega" : nome === "Débito" ? "Cartão de débito na entrega" : "Pague ao receber ou retirar"; return { nome, desc }; }).map(op => <button key={op.nome} onClick={() => setPagamento(op.nome)} className={`flex min-h-[76px] w-full items-center gap-4 rounded-2xl border p-4 text-left ${pagamento === op.nome ? "border-[#ffc400] bg-[#ffc400]/10" : "border-white/10 bg-[#141617]"}`}><span className={`grid size-11 place-items-center rounded-xl ${pagamento === op.nome ? "bg-[#ffc400] text-black" : "bg-white/5 text-[#ffc400]"}`}><CreditCard className="size-5"/></span><span className="flex-1"><b>{op.nome}</b><small className="mt-1 block text-white/45">{op.desc}</small></span>{op.nome === "PIX" && <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-300">Popular</span>}<span className={`size-5 rounded-full border-2 ${pagamento === op.nome ? "border-[#ffc400] bg-[#ffc400] shadow-[inset_0_0_0_4px_#111]" : "border-white/25"}`}/></button>)}</div>
-        {pagamento === "Dinheiro" && <label className="block text-xs font-bold text-white/60">Precisa de troco? Para quanto?<input value={troco} onChange={e => setTroco(e.target.value)} className={inputClass} placeholder="Ex.: R$ 50,00 (opcional)"/></label>}
-        {pagamento === "PIX" && <label className="block text-xs font-bold text-white/60">E-mail para o pagamento PIX *<input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputClass} placeholder="voce@exemplo.com" autoComplete="email"/></label>}
-        <label className="block text-xs font-bold text-white/60">Observação do pedido (opcional)<textarea value={observacao} onChange={e => setObservacao(e.target.value)} className={`${inputClass} min-h-24 py-3`} placeholder="Alguma informação para a lanchonete?"/></label>
-        <div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex justify-between text-sm text-white/50"><span>Subtotal</span><span>{dinheiro(subtotal)}</span></div><div className="mt-2 flex justify-between text-sm text-white/50"><span>Entrega</span><span>{taxaEntrega ? dinheiro(taxaEntrega) : "Grátis"}</span></div><div className="mt-3 flex justify-between border-t border-white/10 pt-3 font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(total)}</span></div></div>
-        <div className="grid grid-cols-[.8fr_1.2fr] gap-3"><button onClick={() => setCheckoutEtapa(1)} className={quietClass}>Voltar</button><button onClick={continuarPagamento} disabled={!pagamento} className={actionClass}>Continuar <ArrowRight className="ml-1 inline size-4"/></button></div>
-      </section>}
-
-      {checkoutEtapa === 3 && <section className="space-y-4 py-5"><p className="text-sm text-white/50">Confira as informações antes de confirmar.</p><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex items-center justify-between"><h2 className="font-black">Cliente</h2><button onClick={() => setCheckoutEtapa(1)} className="text-sm font-bold text-[#ffc400]">Editar</button></div><p className="mt-2">{nome}</p><p className="text-sm text-white/50">{telefone}</p><p className="mt-3 text-sm text-white/70">{tipoEntrega === "retirada" ? "Retirada no local" : `${rua}, ${numero} — ${bairro}${complemento ? `, ${complemento}` : ""}`}</p>{referencia && tipoEntrega === "entrega" && <p className="text-xs text-white/40">Referência: {referencia}</p>}</div><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex items-center justify-between"><h2 className="font-black">Pagamento</h2><button onClick={() => setCheckoutEtapa(2)} className="text-sm font-bold text-[#ffc400]">Editar</button></div><p className="mt-2">{pagamento}{pagamento === "Dinheiro" && troco ? ` • Troco para ${troco}` : ""}</p></div><div className="rounded-2xl border border-white/10 bg-[#141617] p-4"><h2 className="font-black">Resumo do pedido</h2><div className="mt-3 space-y-3">{sacola.map(item => <div key={item.id} className="flex justify-between gap-3 text-sm"><span className="text-white/70">{item.quantidade}x {item.nome}</span><b>{dinheiro(item.preco * item.quantidade)}</b></div>)}</div><div className="mt-4 space-y-2 border-t border-white/10 pt-3 text-sm"><div className="flex justify-between text-white/50"><span>Subtotal</span><span>{dinheiro(subtotal)}</span></div><div className="flex justify-between text-white/50"><span>Taxa de entrega</span><span>{taxaEntrega ? dinheiro(taxaEntrega) : "Grátis"}</span></div><div className="flex justify-between border-t border-white/10 pt-3 text-base font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(total)}</span></div></div>{observacao && <p className="mt-3 text-xs text-white/45">Observação: {observacao}</p>}</div><div className="grid grid-cols-[.8fr_1.2fr] gap-3"><button onClick={() => setCheckoutEtapa(2)} className={quietClass}>Voltar</button><button onClick={() => confirmarPedido()} disabled={enviandoPedido} className={actionClass}>{enviandoPedido ? "Preparando..." : pagamento === "PIX" ? "Gerar PIX" : "Confirmar pedido"} <Check className="ml-1 inline size-4"/></button></div><p className="text-center text-[11px] text-white/35">O pedido é enviado com segurança. No PIX, o pagamento é processado pelo Mercado Pago e a confirmação chega pelo Webhook.</p></section>}
-
-      {checkoutEtapa === 4 && pixData && <section className="space-y-6 py-8">
-        <div className="text-center">
-          <div className="mx-auto grid size-16 place-items-center rounded-full bg-[#ffc400]/10 text-[#ffc400]"><QrCode className="size-8"/></div>
-          <p className="mt-4 text-xs font-black uppercase tracking-[.2em] text-[#ffc400]">Pagamento via PIX</p>
-          <h2 className="mt-2 text-3xl font-black">Escaneie para pagar</h2>
-          <p className="mt-2 text-sm text-white/45">Use o QR Code abaixo ou copie e cole o código no seu banco.</p>
-          <p className="mt-4 text-4xl font-black text-[#ffc400]">{dinheiro(pedidoAtual?.total ?? total)}</p>
-        </div>
-        {pixData.qr_code_base64 ? <div className="mx-auto w-full max-w-sm rounded-3xl border border-white/10 bg-white p-4 shadow-2xl"><img src={`data:image/png;base64,${pixData.qr_code_base64}`} alt="QR Code PIX" className="mx-auto aspect-square w-full rounded-xl object-contain"/></div> : <div className="mx-auto max-w-sm rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4 text-center text-sm text-amber-200">O Mercado Pago não retornou a imagem do QR Code. Use o botão de pagamento abaixo.</div>}
-        <div className="mx-auto max-w-sm text-center">
-          <p className="text-xs text-white/40">PIX Copia e Cola</p>
-          <button onClick={() => navigator.clipboard?.writeText(pixData.qr_code)} className="mt-3 min-h-12 w-full rounded-xl bg-[#ffc400] px-4 font-black text-black"><Copy className="mr-2 inline size-4"/>Copiar código PIX</button>
-          {pixData.ticket_url && <a href={pixData.ticket_url} target="_blank" rel="noreferrer" className="mt-3 block min-h-12 rounded-xl border border-white/10 bg-white/[.04] px-4 py-3 font-bold text-white">Abrir pagamento PIX</a>}
-          <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-4 text-left">
-            <p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">Status do pagamento</p>
-            <p className="mt-2 font-black">{pixStatus === "aprovado" ? "Pagamento aprovado" : pixStatus === "recusado" ? "Pagamento recusado" : pixStatus === "cancelado" ? "Pagamento cancelado" : "Aguardando pagamento..."}</p>
-            <p className="mt-1 text-xs text-white/45">Após pagar, toque em verificar pagamento. A confirmação chega automaticamente pelo Mercado Pago.</p>
-          </div>
-          <button onClick={verificarPagamentoPix} disabled={verificandoPix} className={`${actionClass} mt-4 w-full`}>{verificandoPix ? "Verificando..." : "Já paguei • verificar pagamento"}</button>
-        </div>
-      </section>}
-      {checkoutEtapa === 5 && pedidoAtual && <section className="py-10 text-center"><div className="mx-auto grid size-20 place-items-center rounded-full bg-emerald-400/15 text-emerald-400"><CheckCircle2 className="size-11"/></div><p className="mt-5 text-xs font-black uppercase tracking-[.2em] text-[#ffc400]">Tudo certo, {pedidoAtual.nome.split(" ")[0]}!</p><h2 className="mt-2 text-3xl font-black">Pedido registrado</h2><p className="mt-2 text-sm text-white/50">Seu número de pedido</p><p className="mt-1 text-4xl font-black text-[#ffc400]">#{pedidoAtual.numero}</p><div className="mx-auto mt-6 max-w-md rounded-2xl border border-white/10 bg-[#141617] p-4 text-left"><div className="flex items-center gap-3"><PackageCheck className="size-6 text-[#ffc400]"/><div><b>Status: {pedidoAtual.status}</b><p className="text-xs text-white/45">Pedido recebido pelo sistema da Lilhão</p></div></div><div className="mt-4 border-t border-white/10 pt-3 text-sm"><div className="flex justify-between"><span className="text-white/50">Entrega</span><span>{pedidoAtual.entrega}</span></div><div className="mt-2 flex justify-between"><span className="text-white/50">Pagamento</span><span>{pedidoAtual.pagamento}</span></div><div className="mt-2 flex justify-between font-black"><span>Total</span><span className="text-[#ffc400]">{dinheiro(pedidoAtual.total)}</span></div></div></div><p className="mx-auto mt-4 max-w-md text-xs leading-relaxed text-white/40">Seu pedido foi registrado com segurança e já está disponível para atendimento no sistema da Lilhão.</p><div className="mx-auto mt-6 grid max-w-md gap-3"><button onClick={abrirMeusPedidos} className={actionClass}>Acompanhar / ver meus pedidos</button><button onClick={() => { setCheckoutEtapa(0); setPedidoAtual(null); setAba("inicio"); }} className={quietClass}>Voltar ao cardápio</button></div></section>}
-    </main> : <>
-      {aba === "inicio" && <main><section id="inicio" className="relative isolate flex min-h-[420px] items-center justify-center overflow-hidden border-b border-white/10 bg-black text-center sm:min-h-[520px]"><img src={heroBurger} alt="" className="absolute inset-0 -z-20 h-full w-full object-cover"/><div className="absolute inset-0 -z-10 bg-gradient-to-b from-black/65 via-black/50 to-[#080909]"/><div className="relative mx-auto flex w-full max-w-5xl flex-col items-center px-5 py-16"><p className="mb-4 text-[11px] font-black uppercase tracking-[.2em] text-white/90 sm:text-sm">Hambúrgueres • Pizzas • Refeições • Sorvetes</p><p className="text-xl font-black uppercase">Lanchonete do</p><h1 className="mt-1 text-7xl font-black uppercase leading-[.9] tracking-tight text-[#ffc400] sm:text-9xl">Lilhão<span className="text-white">.</span></h1><p className="mt-4 text-sm font-bold uppercase tracking-wide">Sabor que vira tradição!</p><a href="#cardapio" className="mt-7 inline-flex min-h-12 items-center justify-center gap-3 rounded-full bg-[#ffc400] px-9 font-black text-black">Ver cardápio ↓</a></div></section>
-        <section id="cardapio" className="mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-10"><div className="mb-4 flex items-center gap-3 rounded-full border border-white/15 bg-[#171819] px-4 py-1"><Search className="size-5 text-white/45"/><input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar no cardápio..." className="min-h-11 w-full bg-transparent text-sm outline-none placeholder:text-white/40"/></div><div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#141617] px-4 py-3"><div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-white/45">Categoria selecionada</p><p className="truncate text-sm font-black">{categoria}</p></div><button onClick={() => setCategoriasAbertas(true)} className="rounded-full bg-[#ffc400] px-4 py-2.5 text-xs font-black text-black">Categorias ⌄</button></div>
-          {(categoria === "Todos" ? categoriasMenu.slice(1) : [categoria]).map(cat => { const itens = filtrados.filter(p => p.categoria === cat); if (!itens.length) return null; const Icon = categoriaIcone(cat); return <section key={cat} className="mb-7"><div className="mb-3 flex items-center gap-3"><Icon className="size-6 text-[#ffc400]"/><h2 className="text-xl font-black">{cat}</h2></div><div className="space-y-2.5">{itens.map(p => <article key={p.id} className="flex min-h-[116px] overflow-hidden rounded-xl border border-white/15 bg-[#141617]"><div className="w-[112px] shrink-0 bg-black sm:w-36">{p.imagem ? <img src={p.imagem} alt={p.nome} loading="lazy" className="h-full min-h-[116px] w-full object-cover"/> : <div className="grid h-full min-h-[116px] place-items-center text-4xl">{cat === "Bebidas" ? "🥤" : cat === "Sorvetes" ? "🍨" : cat === "Pizzas" ? "🍕" : "🥪"}</div>}</div><div className="flex min-w-0 flex-1 items-center justify-between gap-2 p-3"><div className="min-w-0"><h3 className="text-sm font-bold">{p.nome}</h3><p className="mt-1 line-clamp-2 text-xs text-white/55">{p.descricao}</p><p className="mt-1.5 font-black text-[#ffc400]">{dinheiro(p.preco)}</p></div><button onClick={() => adicionar(p)} aria-label={`Adicionar ${p.nome}`} className="grid size-10 shrink-0 place-items-center rounded-full bg-[#ffc400] text-black"><Plus className="size-5"/></button></div></article>)}</div></section>; })}{filtrados.length === 0 && <p className="p-8 text-center text-white/50">Nenhum item encontrado.</p>}</section>
-        <section className="border-t border-white/10 bg-[#111314] px-4 py-8 text-center"><p className="text-xs font-black uppercase tracking-[.2em] text-[#ffc400]">Estamos por aqui</p><h2 className="mt-2 text-2xl font-black">Lilhão, sabor que conquista</h2><div className="mt-5 flex flex-wrap justify-center gap-4 text-sm text-white/50"><span><Clock className="mr-1 inline size-4 text-[#ffc400]"/>{horarioAbertura} às {horarioFechamento}</span><span><Phone className="mr-1 inline size-4 text-[#ffc400]"/>Pedidos</span></div></section></main>}
-
-      {aba === "pedidos" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-6">
-        <div className="flex items-center gap-3"><ClipboardList className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Histórico</p><h1 className="text-2xl font-black">Meus pedidos</h1></div></div>
-        <p className="mt-2 text-sm text-white/55">Veja os pedidos vinculados à sua sessão. Para localizar um pedido pelo número e celular, acesse Minha conta.</p>
-        {pedidos.length ? <div className="mt-5 space-y-3">{pedidos.map((pedido) => <article key={pedido.numero} className="rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs text-white/45">Pedido</p><h2 className="font-black">{pedido.numero}</h2><p className="mt-1 text-xs text-white/45">{new Date(pedido.criadoEm).toLocaleString("pt-BR")}</p></div><span aria-label={`Status do pedido: ${pedido.status}`} className={`rounded-full px-3 py-1.5 text-xs font-extrabold ${classeStatusPedido(pedido.status)}`}>{pedido.status}</span></div><div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3"><span className="text-sm text-white/55">{pedido.itens.reduce((total, item) => total + item.quantidade, 0)} item(ns)</span><strong className="text-[#ffc400]">{dinheiro(pedido.total)}</strong></div></article>)}</div> : <div className="mt-5 rounded-2xl border border-white/10 bg-[#141617] p-6 text-center">{historicoCarregando ? <><ClipboardList className="mx-auto size-10 animate-pulse text-[#ffc400]"/><h2 className="mt-3 font-black">Carregando seu histórico…</h2><p className="mt-1 text-sm text-white/45">Estamos recuperando seus pedidos salvos. Não precisa informar seus dados novamente.</p></> : <><ClipboardList className="mx-auto size-10 text-white/20"/><h2 className="mt-3 font-black">Nenhum pedido no histórico</h2><p className="mt-1 text-sm text-white/45">Não conseguimos carregar os pedidos agora. Confira seus dados em Minha conta ou tente atualizar o histórico.</p></>}</div>}
-        <button onClick={() => { setAba("conta"); setCheckoutEtapa(0); }} className={`${actionClass} mt-4 w-full`}>Ir para Minha conta</button>
-      </main>}
-      {aba === "conta" && <main className="mx-auto min-h-[70dvh] max-w-3xl px-4 py-8">
-        <div className="flex items-center gap-3"><User className="size-6 text-[#ffc400]"/><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#ffc400]">Sua conta</p><h1 className="text-2xl font-black">Minha conta</h1></div></div>
-        <div className="mt-5 rounded-2xl border border-[#ffc400]/25 bg-[#141617] p-5">
-          <p className="text-xs font-black uppercase tracking-wider text-[#ffc400]">{contaCriada ? "Conta cadastrada" : "Primeiro acesso"}</p><h2 className="mt-2 text-2xl font-black">{contaCriada ? "Sua conta Lilhão" : "Criar minha conta"}</h2><p className="mt-2 text-sm leading-relaxed text-white/50">{contaCriada ? "Seu cadastro está salvo. Use os mesmos dados para consultar seu histórico e vincular novas compras." : "Cadastre-se com seu nome completo e celular. Não precisa de e-mail, código ou senha."}</p>
-          {contaErro && <div role="alert" className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 text-sm text-amber-100">{contaErro}</div>}{contaConsultou && contaCriada && pedidos.length === 0 && <div role="status" className="mt-4 rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-100">Conta criada com sucesso! Ainda não encontramos compras anteriores com esses dados. Seus próximos pedidos poderão ser vinculados a esta conta.</div>}
-          <div className="mt-5 space-y-3">
-            <label className="block text-xs font-bold text-white/55">Nome completo<input value={contaNome} onChange={e=>setContaNome(e.target.value)} autoComplete="name" placeholder="Seu nome e sobrenome" className={inputClass}/></label>
-            <label className="block text-xs font-bold text-white/55">Celular / WhatsApp<input value={contaTelefone} onChange={e=>setContaTelefone(e.target.value)} inputMode="tel" autoComplete="tel" placeholder="(96) 99999-9999" className={inputClass}/></label>
-            <button onClick={consultarHistoricoConta} disabled={contaCarregando} className={actionClass+" w-full"}>{contaCarregando ? "Salvando sua conta..." : contaCriada ? "Atualizar meu histórico" : "Criar minha conta"} <ArrowRight className="ml-1 inline size-4"/></button>
-            <p className="text-[11px] leading-relaxed text-white/35">Informe dados verdadeiros. O nome e o celular serão usados para associar seu cadastro aos pedidos.</p>
-          </div>
-          {contaConsultou && pedidos.length === 0 && <p className="mt-4 text-sm text-white/60">Nenhum pedido encontrado para esses dados.</p>}
-        </div>
-      </main>}
-    </>}
-
-    {quantidade > 0 && checkoutEtapa === 0 && <button onClick={() => setSacolaAberta(true)} className="fixed bottom-[88px] right-4 z-30 flex min-h-14 items-center gap-3 rounded-full bg-[#ffc400] px-5 font-black text-black shadow-xl md:bottom-6"><ShoppingBag className="size-5"/>Ver sacola • {dinheiro(subtotal)}</button>}
-
-
-    <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-white/10 bg-[#101112]/95 px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-xl xl:hidden"><button onClick={() => {setAba("inicio");setCheckoutEtapa(0);}} className={`flex flex-col items-center gap-1 py-1 text-[10px] font-semibold ${aba === "inicio" ? "text-[#ffc400]" : "text-white/55"}`}><Home className="size-5"/>Início</button><button onClick={() => setCategoriasAbertas(true)} className="flex flex-col items-center gap-1 py-1 text-[10px] font-semibold text-white/55"><Utensils className="size-5"/>Categorias</button><button onClick={abrirMeusPedidos} className={`flex flex-col items-center gap-1 py-1 text-[10px] font-semibold ${aba === "pedidos" ? "text-[#ffc400]" : "text-white/55"}`}><span className="relative"><ClipboardList className="size-5"/>{quantidade > 0 && <span className="absolute -right-3 -top-2 grid min-h-4 min-w-4 place-items-center rounded-full bg-[#ffc400] px-1 text-[9px] font-black text-black">{quantidade}</span>}</span>Pedidos</button><button onClick={() => {setAba("conta");setCheckoutEtapa(0);}} className={`flex flex-col items-center gap-1 py-1 text-[10px] font-semibold ${aba === "conta" ? "text-[#ffc400]" : "text-white/55"}`}><User className="size-5"/>Conta</button></nav>
-
-    {categoriasAbertas && <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/75 backdrop-blur-sm" onClick={() => setCategoriasAbertas(false)}><section role="dialog" aria-modal="true" onClick={e=>e.stopPropagation()} className="max-h-[82dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl border border-white/10 bg-[#111314] pb-6"><div className="sticky top-0 flex items-center justify-between border-b border-white/10 bg-[#111314] px-5 py-4"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-[#ffc400]">Explore o cardápio</p><h2 className="mt-1 text-xl font-black">Categorias</h2></div><button onClick={() => setCategoriasAbertas(false)} aria-label="Fechar categorias" className="grid size-10 place-items-center rounded-full border border-white/10"><X className="size-5"/></button></div><div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3">{categoriasMenu.map(item=>{const Icon=categoriaIcone(item);const selected=categoria===item;const count=item==="Todos"?menu.length:menu.filter(p=>p.categoria===item).length;return <button key={item} onClick={()=>{setCategoria(item);setCategoriasAbertas(false);setAba("inicio");document.getElementById("cardapio")?.scrollIntoView({behavior:"smooth"});}} className={`flex min-h-[90px] items-center gap-3 rounded-2xl border p-3 text-left ${selected?"border-[#ffc400] bg-[#ffc400] text-black":"border-white/10 bg-[#191b1c] text-white"}`}><span className={`grid size-10 shrink-0 place-items-center rounded-xl ${selected?"bg-black/10":"bg-[#ffc400]/10 text-[#ffc400]"}`}><Icon className="size-5"/></span><span><b className="block text-sm">{item}</b><small className={`mt-1 block text-[10px] ${selected?"text-black/60":"text-white/40"}`}>{item==="Todos"?"Cardápio completo":`${count} ${count===1?"opção":"opções"}`}</small></span></button>})}</div></section></div>}
-
-    {sacolaAberta && <div className="fixed inset-0 z-[65] flex justify-end bg-black/75" onClick={() => setSacolaAberta(false)}><aside role="dialog" aria-modal="true" aria-label="Minha sacola" onClick={e=>e.stopPropagation()} className="flex h-full w-full max-w-lg flex-col border-l border-white/10 bg-[#111314] shadow-2xl"><div className="flex items-center justify-between border-b border-white/10 p-5"><div><p className="text-xs font-black uppercase tracking-widest text-[#ffc400]">Seu pedido</p><h2 className="mt-1 text-2xl font-black">Minha sacola ({quantidade})</h2></div><button onClick={() => setSacolaAberta(false)} aria-label="Fechar sacola" className="grid size-10 place-items-center rounded-full border border-white/15"><X className="size-5"/></button></div><div className="flex-1 overflow-y-auto p-4">{sacola.length===0?<div className="py-16 text-center"><ShoppingBag className="mx-auto size-12 text-white/20"/><h3 className="mt-4 font-bold">Sua sacola está vazia</h3><button onClick={()=>setSacolaAberta(false)} className={`${actionClass} mt-5`}>Explorar cardápio</button></div>:<div className="space-y-3">{sacola.map(item=><div key={item.id} className="flex gap-3 rounded-xl border border-white/10 bg-[#181a1b] p-3"><div className="size-[68px] shrink-0 overflow-hidden rounded-lg bg-black">{item.imagem?<img src={item.imagem} alt={item.nome} className="h-full w-full object-cover"/>:<div className="grid h-full place-items-center text-2xl">🍟</div>}</div><div className="min-w-0 flex-1"><div className="flex justify-between gap-2"><div><h4 className="text-sm font-bold">{item.nome}</h4><p className="text-xs text-[#ffc400]">{dinheiro(item.preco)}</p></div><button onClick={()=>alterarQuantidade(item.id,-item.quantidade)} aria-label={`Remover ${item.nome}`} className="text-white/40"><Trash2 className="size-4"/></button></div><div className="mt-2 flex items-center justify-between"><div className="flex items-center gap-2 rounded-full bg-white/[.06] p-1"><button onClick={()=>alterarQuantidade(item.id,-1)} className="grid size-7 place-items-center rounded-full bg-white/10"><Minus className="size-3.5"/></button><span className="min-w-4 text-center text-sm font-bold">{item.quantidade}</span><button onClick={()=>alterarQuantidade(item.id,1)} className="grid size-7 place-items-center rounded-full bg-white/10"><Plus className="size-3.5"/></button></div><b className="text-sm text-[#ffc400]">{dinheiro(item.preco*item.quantidade)}</b></div></div></div>)}</div>}</div>{sacola.length>0&&<div className="border-t border-white/10 bg-[#141617] p-4"><label className="mb-3 block text-xs font-bold text-white/50">Observação geral (opcional)<input value={observacao} onChange={e=>setObservacao(e.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-white outline-none focus:border-[#ffc400]" placeholder="Ex.: sem cebola"/></label><div className="mb-4 flex items-center justify-between"><span className="font-bold text-white/60">Subtotal</span><span className="text-2xl font-black">{dinheiro(subtotal)}</span></div><button onClick={abrirCheckout} disabled={!configCarregada || !lojaAberta || !sacola.length || (pedidoMinimo > 0 && subtotal < pedidoMinimo)} className={`${actionClass} w-full`}>{!lojaAberta ? "Loja fechada" : pedidoMinimo > 0 && subtotal < pedidoMinimo ? "Atingir pedido mínimo" : "Finalizar pedido"} <ArrowRight className="ml-1 inline size-4"/></button><p className="mt-3 text-center text-[10px] text-white/35">{!lojaAberta ? "A loja está fechada no momento." : pedidoMinimo > 0 && subtotal < pedidoMinimo ? `Pedido mínimo: ${dinheiro(pedidoMinimo)}.` : "Entrega e pagamento serão escolhidos na próxima etapa."}</p></div>}</aside></div>}
-  </div>;
-}
-
-export const Route = createFileRoute("/")({
-  // A loja pública é essencialmente client-side (Supabase Auth, catálogo,
-  // checkout e estado local). Evitar SSR aqui impede que uma exceção de
-  // renderização no servidor derrube a página inteira com o erro genérico.
-  ssr: false,
-  component: Index,
-});
