@@ -162,14 +162,12 @@ function Index() {
   }, []);
 
   useEffect(() => {
-    // Restore each saved value independently: a damaged order cache must never
-    // erase the customer's saved name/phone or force another account lookup.
     let clienteRestaurado = false;
     try {
       const saved = window.localStorage.getItem("lilhao-historico-cliente-v1");
       if (saved) {
         const parsed = JSON.parse(saved) as { nome?: string; telefone?: string };
-        if (parsed.nome?.trim() && parsed.telefone?.trim()) {
+        if (parsed.nome && parsed.nome.trim() && parsed.telefone && parsed.telefone.trim()) {
           setContaNome(parsed.nome);
           setContaTelefone(parsed.telefone);
           setContaConsultou(true);
@@ -177,37 +175,32 @@ function Index() {
           clienteRestaurado = true;
         }
       }
-    } catch {
-      // Leave the stored identity untouched; the user can still recover it.
+    } catch (error) {
+      // Do not delete the customer's saved identity if local cached data is malformed.
     }
 
     try {
-      // Keep the last successful cards visible immediately while the live
-      // request refreshes statuses from the server.
       const cachedOrders = window.localStorage.getItem("lilhao-historico-pedidos-v1");
       if (cachedOrders) {
         const parsedOrders = JSON.parse(cachedOrders) as Pedido[];
         if (Array.isArray(parsedOrders)) setPedidos(parsedOrders.slice(0, 20));
       }
-    } catch {
-      // Ignore only a malformed order cache; do not clear the customer identity.
+    } catch (error) {
+      // Ignore a damaged order cache but preserve customer identity.
     }
 
     try {
       const abaSalva = window.localStorage.getItem("lilhao-aba-atual-v1");
-      // If a customer identity was previously verified, restore the order
-      // history directly rather than returning to the account-entry screen.
       if (clienteRestaurado) {
         setAba("pedidos");
         window.localStorage.setItem("lilhao-aba-atual-v1", "pedidos");
       } else if (abaSalva === "pedidos" || abaSalva === "conta") {
         setAba(abaSalva);
       }
-    } catch {
+    } catch (error) {
       if (clienteRestaurado) setAba("pedidos");
-    } finally {
-      setPreferenciasCarregadas(true);
     }
+    setPreferenciasCarregadas(true);
   }, []);
 
   // Preserve the customer's current section across refreshes.
@@ -218,27 +211,3 @@ function Index() {
   }, [aba, preferenciasCarregadas]);
 
   // The public history view polls only while open. This keeps order status fresh
-  // without exposing a broad realtime subscription to unauthenticated visitors.
-  useEffect(() => {
-    if (!preferenciasCarregadas || aba !== "pedidos") return;
-    const nomeSalvo = contaNome.trim();
-    const telefoneSalvo = contaTelefone.trim();
-    if (nomeSalvo.length < 2 || ![10, 11, 12, 13].includes(telefoneSalvo.replace(/\D/g, "").length)) { setHistoricoCarregando(false); return; }
-    setHistoricoCarregando(true);
-    let ativo = true;
-    let requisicaoEmAndamento = false;
-    const atualizarHistorico = async () => {
-      // Evita que uma consulta lenta anterior termine depois de uma nova e
-      // sobrescreva um status mais recente com dados antigos.
-      if (requisicaoEmAndamento) return;
-      requisicaoEmAndamento = true;
-      try {
-        const [lista, numerosSalvos] = await Promise.all([
-          consultarHistoricoPorNomeTelefone(nomeSalvo, telefoneSalvo),
-          Promise.resolve().then(() => {
-            try {
-              const raw = window.localStorage.getItem("lilhao-historico-numeros-v1");
-              const values = raw ? JSON.parse(raw) : [];
-              return Array.isArray(values) ? values.filter((n): n is string => typeof n === "string").slice(0, 20) : [];
-            } catch { return []; }
-          }),
