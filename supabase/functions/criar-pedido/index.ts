@@ -279,7 +279,7 @@ Deno.serve(async (req: Request) => {
       if (historyError) throw historyError;
 
       const numeros = Array.isArray(historico)
-        ? historico.map((p: any) => String(p?.numero || "")).filter((n: string) => /^LH-\\d{8}-\\d{4,}$/.test(n)).slice(0, 100)
+        ? historico.map((p: any) => String(p?.numero || "")).filter((n: string) => /^LH-\d{8}-\d{4,}$/.test(n)).slice(0, 100)
         : [];
       let pedidos: any[] = [];
       if (numeros.length) {
