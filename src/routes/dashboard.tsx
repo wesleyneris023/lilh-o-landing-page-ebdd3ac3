@@ -239,7 +239,20 @@ function Dashboard() {
 
   if (!autenticado) return <Login onLogged={() => { setAutenticado(true); carregar(); }} />;
   if (autorizado === false) return <main className="grid min-h-screen place-items-center bg-[#080909] px-4 text-white"><section className="max-w-md rounded-3xl border border-red-400/20 bg-[#141617] p-8 text-center"><ShieldAlert className="mx-auto size-12 text-red-300"/><h1 className="mt-4 text-2xl font-black">Acesso não autorizado</h1><p className="mt-2 text-sm leading-relaxed text-white/45">Sua conta está autenticada, mas não possui uma entrada ativa em <b>admin_users</b>.</p><button onClick={()=>supabase.auth.signOut()} className="mt-5 rounded-xl border border-white/10 px-5 py-3 font-bold">Sair</button></section></main>;
-  if (carregando || !config) return <main className="grid min-h-screen place-items-center bg-[#080909] text-white"><div className="text-center"><div className="mx-auto size-10 animate-spin rounded-full border-2 border-white/10 border-t-[#ffc400]"/><p className="mt-4 text-sm text-white/45">Carregando painel...</p></div></main>;
+  const minutosAgora = agora.getHours() * 60 + agora.getMinutes();
+  const [aberturaHora, aberturaMinuto] = String(config?.horario_abertura || "18:00").split(":").map(Number);
+  const [fechamentoHora, fechamentoMinuto] = String(config?.horario_fechamento || "23:30").split(":").map(Number);
+  const minutosAbertura = (Number.isFinite(aberturaHora) ? aberturaHora : 18) * 60 + (Number.isFinite(aberturaMinuto) ? aberturaMinuto : 0);
+  const minutosFechamento = (Number.isFinite(fechamentoHora) ? fechamentoHora : 23) * 60 + (Number.isFinite(fechamentoMinuto) ? fechamentoMinuto : 30);
+  const dentroHorario = minutosAbertura === minutosFechamento
+    ? true
+    : minutosAbertura < minutosFechamento
+      ? minutosAgora >= minutosAbertura && minutosAgora < minutosFechamento
+      : minutosAgora >= minutosAbertura || minutosAgora < minutosFechamento;
+  const lojaAberta = Boolean(config?.aceita_pedidos) && dentroHorario;
+
+  if (carregando) return <main className="grid min-h-screen place-items-center bg-[#080909] text-white"><div className="text-center"><div className="mx-auto size-10 animate-spin rounded-full border-2 border-white/10 border-t-[#ffc400]"/><p className="mt-4 text-sm text-white/45">Carregando painel...</p></div></main>;
+  if (!config) return <main className="grid min-h-screen place-items-center bg-[#080909] px-4 text-white"><section className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#141617] p-8 text-center"><ShieldAlert className="mx-auto size-12 text-[#ffc400]"/><h1 className="mt-4 text-2xl font-black">Não foi possível carregar as configurações</h1><p className="mt-2 text-sm leading-relaxed text-white/55">{erro || "Não encontramos as configurações da loja no banco de dados."}</p><button onClick={() => carregar()} className="mt-5 rounded-xl bg-[#ffc400] px-5 py-3 font-black text-black">Tentar novamente</button></section></main>;
 
   async function status(numero:string,status:string) {
     try { await atualizarStatusPedido(numero,status); setPedidos(await carregarPedidosAdmin()); setMensagem("Status atualizado no banco."); }
