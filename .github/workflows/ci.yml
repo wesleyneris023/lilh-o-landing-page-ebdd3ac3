@@ -27,6 +27,7 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
       - name: Lint changed checkout route
-        run: npx eslint src/routes/index.tsx --rule 'prettier/prettier: off'
+        run: >-
+          npx eslint src/routes/index.tsx --rule 'prettier/prettier: off'
       - name: Production build
         run: npm run build
