@@ -4,16 +4,16 @@
 @theme {
   --font-sans: "Sora", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Bebas Neue", Impact, sans-serif;
-  --color-background: #090705;
+  --color-background: #080909;
   --color-foreground: #ffffff;
-  --color-primary: #f7b32b;
-  --color-primary-foreground: #090705;
+  --color-primary: #ffc400;
+  --color-primary-foreground: #080909;
 }
 
 :root {
   color-scheme: dark;
   font-family: "Sora", ui-sans-serif, system-ui, sans-serif;
-  background: #090705;
+  background: #080909;
   color: #fff;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -30,14 +30,14 @@
 
 html {
   min-width: 320px;
-  background: #090705;
+  background: #080909;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #090705;
+  background: #080909;
 }
 
 button,
@@ -153,56 +153,5 @@ body:has([role="dialog"][aria-label="Minha sacola"]) button[aria-label^="Abrir s
 
   nav.fixed.inset-x-0.bottom-0 > :nth-child(4)::after {
     content: "Conta";
-  }
-}
-
-
-/* Empírica Burger visual identity — presentation only */
-:root {
-  --color-primary: #f7b32b;
-  --color-primary-foreground: #120b03;
-  --color-background: #090705;
-  background: #090705;
-}
-
-.empirica-hero {
-  background-color: #090604;
-  box-shadow: inset 0 -1px 0 rgb(247 179 43 / 20%);
-}
-
-.empirica-hero img {
-  filter: saturate(1.12) contrast(1.08);
-  object-position: center 54%;
-}
-
-.empirica-brush {
-  font-family: "Bebas Neue", Impact, sans-serif;
-  font-style: italic;
-  letter-spacing: -0.035em;
-  text-shadow: 0 3px 0 #7d4307, 0 0 28px rgb(247 179 43 / 16%);
-}
-
-header.sticky {
-  border-color: rgb(247 179 43 / 18%) !important;
-  background: rgb(13 9 5 / 96%) !important;
-}
-
-#cardapio article {
-  border-color: rgb(247 179 43 / 15%);
-  background: linear-gradient(135deg, #19120b, #100d09);
-}
-
-#cardapio article button,
-nav.fixed.inset-x-0.bottom-0 {
-  --tw-ring-color: #f7b32b;
-}
-
-@media (max-width: 640px) {
-  .empirica-hero {
-    min-height: 480px;
-  }
-
-  .empirica-hero img {
-    object-position: 58% center;
   }
 }
