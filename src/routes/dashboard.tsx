@@ -545,4 +545,20 @@ function Dashboard() {
   </div>;
 }
 
-export const Route = createFileRoute("/dashboard")({ component: Dashboard });
+function DashboardError({ error, reset }: { error: Error; reset: () => void }) {
+  return <main className="grid min-h-screen place-items-center bg-[#080909] px-4 text-white">
+    <section className="w-full max-w-xl rounded-3xl border border-red-400/20 bg-[#141617] p-7 shadow-2xl">
+      <ShieldAlert className="size-10 text-[#ffc400]"/>
+      <p className="mt-4 text-[10px] font-black uppercase tracking-[.22em] text-[#ffc400]">Lilhão • Painel administrativo</p>
+      <h1 className="mt-2 text-2xl font-black">Não foi possível abrir o painel</h1>
+      <p className="mt-3 text-sm leading-relaxed text-white/60">Ocorreu um erro ao abrir esta página. Tente novamente; se continuar, esta mensagem ajuda a identificar a causa.</p>
+      <pre className="mt-4 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-red-200">{error?.message || "Erro inesperado ao renderizar o painel."}</pre>
+      <div className="mt-5 flex flex-wrap gap-3">
+        <button onClick={reset} className="rounded-xl bg-[#ffc400] px-5 py-3 font-black text-black">Tentar novamente</button>
+        <a href="/" className="rounded-xl border border-white/10 px-5 py-3 font-bold text-white">Voltar à loja</a>
+      </div>
+    </section>
+  </main>;
+}
+
+export const Route = createFileRoute("/dashboard")({ component: Dashboard, errorComponent: DashboardError });
