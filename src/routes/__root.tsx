@@ -78,17 +78,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Empírica Burger — Hambúrgueres Artesanais" },
+      { title: "Lilhão — Lanchonete" },
       {
         name: "description",
         content:
-          "Empírica Burger: hambúrgueres artesanais, combinações exclusivas e muito sabor.",
+          "A lanchonete Lilhão: hambúrgueres artesanais, cachorro-quente caprichado e batatas crocantes.",
       },
-      { property: "og:title", content: "Empírica Burger — Hambúrgueres Artesanais" },
+      { property: "og:title", content: "Lilhão — Lanchonete" },
       {
         property: "og:description",
         content:
-          "Hambúrgueres artesanais, combinações exclusivas e muito sabor.",
+          "Hambúrgueres artesanais, cachorro-quente caprichado e batatas crocantes.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
