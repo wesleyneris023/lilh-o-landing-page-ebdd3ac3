@@ -109,6 +109,20 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (typeof body?.pagamento !== "string" || !body.pagamento.trim()) {
+      return new Response(JSON.stringify({ error: "Selecione uma forma de pagamento válida." }), {
+        status: 400,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+
+    if (body.pagamento.trim().toUpperCase() === "PIX") {
+      return new Response(JSON.stringify({ error: "Pagamento via PIX temporariamente indisponível. Escolha outra forma de pagamento." }), {
+        status: 409,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+
     const rateLimitKey = `ip:${await sha256Hex(`${key}:${clientIp}`)}`;
     const { data: rateAttempts, error: rateError } = await admin.rpc("registrar_tentativa_pedido", {
       p_rate_limit_key: rateLimitKey,
