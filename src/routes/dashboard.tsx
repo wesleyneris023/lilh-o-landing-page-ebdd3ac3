@@ -471,7 +471,7 @@ function Dashboard() {
         </section>}
       </main>
     </div>
-    <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 border-t border-white/10 bg-[#101112]/95 p-2 backdrop-blur-xl md:hidden">{[["visao","Visão geral",LayoutDashboard],["pedidos","Pedidos",ClipboardList],["cardapio","Cardápio",Utensils],["categorias","Categorias",Package],["configuracoes","Configurações",Settings]].map(([id,label,Icon])=><button key={id} onClick={()=>setAba(id as typeof aba)} className={`flex min-w-0 flex-col items-center justify-center gap-1 py-1 text-[8px] font-bold sm:text-[9px] ${aba===id?"text-[#ffc400]":"text-white/45"}`}><Icon className="size-5"/><span className="whitespace-nowrap">{label}</span></button>)}</nav>
+    <nav data-admin-mobile-nav="v2" aria-label="Navegação administrativa" className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 border-t border-white/10 bg-[#101112]/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-xl md:hidden">{menu.map(([id,label,Icon])=><button key={`mobile-${id}`} type="button" aria-current={aba===id?"page":undefined} onClick={()=>setAba(id)} className={`flex min-w-0 flex-col items-center justify-center gap-1 py-1 text-[8px] font-bold sm:text-[9px] ${aba===id?"text-[#ffc400]":"text-white/45"}`}><Icon className="size-5"/><span className="whitespace-nowrap">{label}</span></button>)}</nav>
     {produtoEditando && (
       <div
         className="fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 sm:items-center sm:p-4"
