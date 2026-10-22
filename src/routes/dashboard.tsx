@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { BarChart3, Check, ClipboardList, ExternalLink, LayoutDashboard, LogIn, Package, Plus, Search, Settings, ShieldAlert, Utensils, X, TrendingUp, Users, ShoppingCart, CircleDollarSign, Clock3, Truck, Store, CalendarDays } from "lucide-react";
+import { BarChart3, Check, ClipboardList, ExternalLink, LayoutDashboard, LogIn, Package, Plus, Search, Settings, ShieldAlert, Utensils, X, TrendingUp, Users, ShoppingCart, CircleDollarSign, Clock3, Truck, Store, CalendarDays, UserRound, Palette, Save, Sun, Moon } from "lucide-react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { categorias, dinheiro, type Pedido, type Produto } from "@/data/store";
 import { atualizarStatusPedido, carregarConfiguracoes, carregarPedidosAdmin, carregarProdutosAdmin, ehAdmin, salvarConfiguracoes, salvarProdutoDb, excluirProdutoDb } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 
-type Aba = "visao" | "pedidos" | "cardapio" | "categorias" | "clientes" | "configuracoes";
+type Aba = "visao" | "pedidos" | "cardapio" | "categorias" | "clientes" | "configuracoes" | "minha-conta";
 const statusOptions = ["Recebido", "Em preparo", "Pronto", "Saiu para entrega", "Concluído", "Cancelado"];
 
 function Login({ onLogged }: { onLogged: () => void }) {
@@ -54,6 +54,12 @@ function Dashboard() {
   const [novoPedidoAviso, setNovoPedidoAviso] = useState("");
   const [agora, setAgora] = useState(new Date());
   const [periodoSelecionado, setPeriodoSelecionado] = useState<"Hoje" | "7 dias" | "30 dias" | "Este mês">("Hoje");
+  const [perfilNome, setPerfilNome] = useState("");
+  const [perfilTelefone, setPerfilTelefone] = useState("");
+  const [perfilEmail, setPerfilEmail] = useState("");
+  const [temaPainel, setTemaPainel] = useState("amarelo");
+  const [modoPainel, setModoPainel] = useState("escuro");
+  const [salvandoPerfil, setSalvandoPerfil] = useState(false);
 
   const menu = [
     ["visao","Visão geral",LayoutDashboard],
@@ -62,6 +68,7 @@ function Dashboard() {
     ["categorias","Categorias",Package],
     ["clientes","Clientes",Users],
     ["configuracoes","Configurações",Settings],
+    ["minha-conta","Minha conta",UserRound],
   ] as const;
 
   async function carregar() {
@@ -83,16 +90,42 @@ function Dashboard() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setAutenticado(!!data.session);
-      if (data.session) carregar();
+      if (data.session) { setPerfilEmail(data.session.user.email || ""); setPerfilNome(String(data.session.user.user_metadata?.full_name || data.session.user.user_metadata?.name || "")); setPerfilTelefone(String(data.session.user.user_metadata?.phone || "")); carregar(); }
       else setAutorizado(null);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setAutenticado(!!session);
-      if (session) carregar();
+      if (session) { setPerfilEmail(session.user.email || ""); setPerfilNome(String(session.user.user_metadata?.full_name || session.user.user_metadata?.name || "")); setPerfilTelefone(String(session.user.user_metadata?.phone || "")); carregar(); }
       else { setAutorizado(null); setPedidos([]); setProdutos([]); }
     });
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    setTemaPainel(window.localStorage.getItem("lilhao-admin-tema") || "amarelo");
+    setModoPainel(window.localStorage.getItem("lilhao-admin-modo") || "escuro");
+  }, []);
+
+  useEffect(() => {
+    const cores: Record<string, string> = { amarelo: "#ffc400", azul: "#48a7ff", verde: "#35d07f", roxo: "#b18cff" };
+    document.documentElement.style.setProperty("--lilhao-admin-accent", cores[temaPainel] || cores.amarelo);
+    document.documentElement.dataset.lilhaoAdminMode = modoPainel;
+    let style = document.getElementById("lilhao-admin-theme-overrides") as HTMLStyleElement | null;
+    if (!style) { style = document.createElement("style"); style.id = "lilhao-admin-theme-overrides"; document.head.appendChild(style); }
+    style.textContent = '[class*="text-[#ffc400]"]{color:var(--lilhao-admin-accent)!important}[class*="border-[#ffc400]"]{border-color:var(--lilhao-admin-accent)!important}[class*="bg-[#ffc400]"]{background-color:var(--lilhao-admin-accent)!important}html[data-lilhao-admin-mode="claro"] body{background:#f3f4f6!important;color:#171717!important}html[data-lilhao-admin-mode="claro"] body [class*="bg-[#080909]"],html[data-lilhao-admin-mode="claro"] body [class*="bg-[#0d0e0f]"],html[data-lilhao-admin-mode="claro"] body [class*="bg-[#101112]"],html[data-lilhao-admin-mode="claro"] body [class*="bg-[#111416]"],html[data-lilhao-admin-mode="claro"] body [class*="bg-[#141617]"]{background-color:#fff!important}html[data-lilhao-admin-mode="claro"] body [class*="text-white"]{color:#222!important}html[data-lilhao-admin-mode="claro"] body [class*="border-white/10"]{border-color:#d1d5db!important}';
+    window.localStorage.setItem("lilhao-admin-tema", temaPainel);
+    window.localStorage.setItem("lilhao-admin-modo", modoPainel);
+  }, [temaPainel, modoPainel]);
+
+  async function salvarPerfil() {
+    setSalvandoPerfil(true); setErro("");
+    try {
+      const { error } = await supabase.auth.updateUser({ data: { full_name: perfilNome.trim(), phone: perfilTelefone.trim() } });
+      if (error) throw error;
+      setMensagem("Dados do administrador salvos na conta.");
+    } catch (e) { setErro(e instanceof Error ? e.message : "Não foi possível salvar os dados do administrador."); }
+    finally { setSalvandoPerfil(false); }
+  }
 
   useEffect(() => {
     const timer = window.setInterval(() => setAgora(new Date()), 30000);
@@ -422,7 +455,25 @@ function Dashboard() {
         </section>}{aba==="clientes"&&<section className="space-y-4"><div className="grid gap-3 sm:grid-cols-3"><article className="rounded-2xl border border-white/10 bg-[#141617] p-4"><p className="text-xs text-white/45">Clientes cadastrados</p><p className="mt-2 text-2xl font-black text-[#ffc400]">{clientes.length}</p></article><article className="rounded-2xl border border-white/10 bg-[#141617] p-4"><p className="text-xs text-white/45">Com telefone informado</p><p className="mt-2 text-2xl font-black">{clientes.filter(c=>Boolean(c.telefone)).length}</p></article><article className="rounded-2xl border border-white/10 bg-[#141617] p-4"><p className="text-xs text-white/45">Clientes com pedidos</p><p className="mt-2 text-2xl font-black">{clientes.filter(c=>pedidos.some(p=>p.telefone.replace(/\D/g,"")===c.telefone.replace(/\D/g,""))).length}</p></article></div><div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#141617] px-4"><Search className="size-4 text-white/30"/><input value={busca} onChange={e=>setBusca(e.target.value)} className="min-h-11 flex-1 bg-transparent text-sm outline-none" placeholder="Buscar cliente por nome ou telefone..."/></div><div className="overflow-hidden rounded-2xl border border-white/10 bg-[#141617]"><div className="grid grid-cols-[1fr_auto] gap-3 border-b border-white/10 px-4 py-3 text-[10px] font-black uppercase tracking-wider text-white/35 sm:grid-cols-[1.2fr_1fr_.7fr]"><span>Cliente</span><span>Telefone</span><span className="hidden sm:block">Cadastro / pedidos</span></div>{clientes.filter(c=>(c.nome+" "+c.telefone).toLowerCase().includes(busca.toLowerCase())).map(c=>{const pedidosCliente=pedidos.filter(p=>p.telefone.replace(/\D/g,"")===c.telefone.replace(/\D/g,""));return <article key={c.id} className="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-white/10 px-4 py-4 last:border-0 sm:grid-cols-[1.2fr_1fr_.7fr]"><div className="flex min-w-0 items-center gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-full bg-[#ffc400]/10 text-[#ffc400]"><Users className="size-5"/></span><div className="min-w-0"><p className="truncate font-bold">{c.nome || "Nome não informado"}</p><p className="mt-1 text-[10px] text-white/35">Cadastrado em {c.created_at ? new Date(c.created_at).toLocaleDateString("pt-BR") : "data não disponível"}</p></div></div><a className="text-sm font-semibold text-[#ffc400] underline-offset-4 hover:underline" href={c.telefone ? "https://wa.me/"+c.telefone.replace(/\D/g,"") : undefined}>{c.telefone || "Sem telefone"}</a><span className="hidden text-xs text-white/50 sm:block">{pedidosCliente.length} pedido(s)</span></article>})}{!clientes.length&&<div className="px-5 py-12 text-center"><Users className="mx-auto size-8 text-white/25"/><p className="mt-3 font-bold">Nenhum cliente cadastrado encontrado</p><p className="mt-1 text-xs text-white/40">Os clientes que criarem uma conta no site aparecerão aqui.</p></div>}{clientes.length>0&&!clientes.some(c=>(c.nome+" "+c.telefone).toLowerCase().includes(busca.toLowerCase()))&&<div className="px-5 py-8 text-center text-sm text-white/40">Nenhum cliente corresponde à busca.</div>}</div></section>}{aba==="pedidos"&&<section className="space-y-4"><div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#141617] px-4"><Search className="size-4 text-white/30"/><input value={busca} onChange={e=>setBusca(e.target.value)} className="min-h-11 flex-1 bg-transparent text-sm outline-none" placeholder="Buscar pedido ou cliente..."/></div><div className="overflow-hidden rounded-2xl border border-white/10 bg-[#141617]">{pedidos.filter(p=>(p.numero+" "+p.nome+" "+p.telefone).toLowerCase().includes(busca.toLowerCase())).map(p=><div key={p.numero} className="grid gap-3 border-b border-white/10 p-5 last:border-0 md:grid-cols-[1fr_1.4fr_.7fr_.8fr] md:items-center"><div><p className="text-xs text-white/35">Pedido</p><b>#{p.numero}</b><p className="text-xs text-white/35">{new Date(p.criadoEm).toLocaleString("pt-BR")}</p></div><div><b>{p.nome}</b><p className="text-xs text-white/40">{p.telefone} • {p.entrega}</p></div><b className="text-[#ffc400]">{dinheiro(p.total)}</b><select value={p.status} onChange={e=>status(p.numero,e.target.value)} className="min-h-10 rounded-lg border border-white/10 bg-[#0d0e0f] px-2 text-xs font-bold">{statusOptions.filter((x) => x !== "Saiu para entrega" || p.entrega === "Entrega").map(x=><option key={x}>{x}</option>)}</select><button onClick={()=>setPedidoSelecionado(p)} className="text-left text-xs font-bold text-[#ffc400] md:col-span-4">Ver detalhes →</button></div>)}{!pedidos.length&&<div className="py-16 text-center text-white/30">Nenhum pedido registrado.</div>}</div></section>}
         {aba==="cardapio"&&<section className="space-y-4"><div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#141617] px-4"><Search className="size-4 text-white/30"/><input value={busca} onChange={e=>setBusca(e.target.value)} className="min-h-11 flex-1 bg-transparent text-sm outline-none" placeholder="Buscar produto..."/></div><div className="grid gap-3 lg:grid-cols-2">{filtrados.map(p=><article key={p.id} className="flex items-center gap-4 rounded-2xl border border-white/10 bg-[#141617] p-4"><div className="size-20 shrink-0 overflow-hidden rounded-xl bg-black">{p.imagem?<img src={p.imagem} alt="" className="h-full w-full object-cover"/>:<div className="grid h-full place-items-center text-2xl">🍔</div>}</div><div className="min-w-0 flex-1"><p className="text-xs text-[#ffc400]">{p.categoria}</p><h3 className="font-black">{p.nome}</h3><p className="mt-1 line-clamp-1 text-xs text-white/40">{p.descricao}</p><b className="mt-2 block text-[#ffc400]">{dinheiro(p.preco)}</b></div><button onClick={()=>setProdutoEditando(p)} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-bold">Editar</button><button onClick={()=>excluir(p.id)} className="grid size-9 place-items-center rounded-lg border border-red-400/15 text-red-300"><X className="size-4"/></button></article>)}</div></section>}
         {aba==="categorias"&&<section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{categorias.filter(c=>c!=="Todos").map(cat=><article key={cat} className="rounded-2xl border border-white/10 bg-[#141617] p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-white/35">Categoria</p><h2 className="mt-1 font-black">{cat}</h2></div><span className="grid size-10 place-items-center rounded-xl bg-[#ffc400]/10 text-[#ffc400]"><Utensils className="size-5"/></span></div><p className="mt-4 text-sm text-white/45">{produtos.filter(p=>p.categoria===cat).length} produtos ativos</p></article>)}</section>}
-        {aba==="configuracoes"&&<section className="space-y-5">
+        {aba==="minha-conta"&&<section className="space-y-5">
+          <article className="rounded-2xl border border-white/10 bg-[#141617] p-5 sm:p-6">
+            <div className="flex items-center gap-4"><div className="grid size-14 place-items-center rounded-2xl bg-[#ffc400]/10 text-[#ffc400]"><UserRound className="size-7"/></div><div><h2 className="text-xl font-black">Perfil do administrador</h2><p className="mt-1 text-sm text-white/45">Atualize seus dados de contato, vinculados à sua conta administrativa.</p></div></div>
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <label className="block text-sm font-bold text-white/55">Nome completo<input value={perfilNome} onChange={e=>setPerfilNome(e.target.value)} placeholder="Seu nome completo" autoComplete="name" className="mt-2 min-h-12 w-full rounded-xl border border-white/10 bg-black/20 px-4 text-white outline-none focus:border-[#ffc400]"/></label>
+              <label className="block text-sm font-bold text-white/55">Telefone / WhatsApp<input value={perfilTelefone} onChange={e=>setPerfilTelefone(e.target.value)} placeholder="(XX) XXXXX-XXXX" inputMode="tel" autoComplete="tel" className="mt-2 min-h-12 w-full rounded-xl border border-white/10 bg-black/20 px-4 text-white outline-none focus:border-[#ffc400]"/></label>
+              <label className="block text-sm font-bold text-white/55 sm:col-span-2">E-mail da conta<input value={perfilEmail} readOnly className="mt-2 min-h-12 w-full cursor-not-allowed rounded-xl border border-white/10 bg-black/10 px-4 text-white/45 outline-none"/><span className="mt-1 block text-xs font-normal text-white/30">Somente leitura nesta tela.</span></label>
+            </div>
+            <button onClick={salvarPerfil} disabled={salvandoPerfil} className="mt-5 inline-flex min-h-12 items-center justify-center rounded-xl bg-[#ffc400] px-5 font-black text-black disabled:opacity-50"><Save className="mr-2 size-4"/>{salvandoPerfil?"Salvando...":"Salvar meus dados"}</button>
+          </article>
+          <article className="rounded-2xl border border-white/10 bg-[#141617] p-5 sm:p-6">
+            <div className="flex items-center gap-3"><Palette className="size-6 text-[#ffc400]"/><div><h2 className="text-xl font-black">Personalização do painel</h2><p className="mt-1 text-sm text-white/45">Escolha a aparência e a cor de destaque. A preferência fica neste navegador.</p></div></div>
+            <p className="mb-3 mt-6 text-sm font-bold text-white/60">Aparência</p>
+            <div className="grid grid-cols-2 gap-3"><button onClick={()=>setModoPainel("escuro")} className={"flex items-center justify-center gap-2 rounded-xl border p-4 font-bold "+(modoPainel==="escuro"?"border-[#ffc400] bg-[#ffc400]/10 text-[#ffc400]":"border-white/10 text-white/60")}><Moon className="size-5"/> Escuro</button><button onClick={()=>setModoPainel("claro")} className={"flex items-center justify-center gap-2 rounded-xl border p-4 font-bold "+(modoPainel==="claro"?"border-[#ffc400] bg-[#ffc400]/10 text-[#ffc400]":"border-white/10 text-white/60")}><Sun className="size-5"/> Claro</button></div>
+            <p className="mb-3 mt-6 text-sm font-bold text-white/60">Cor de destaque</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[{id:"amarelo",nome:"Amarelo Lilhão",cor:"#ffc400"},{id:"azul",nome:"Azul",cor:"#48a7ff"},{id:"verde",nome:"Verde",cor:"#35d07f"},{id:"roxo",nome:"Roxo",cor:"#b18cff"}].map(t=><button key={t.id} onClick={()=>setTemaPainel(t.id)} className={"flex items-center gap-2 rounded-xl border p-3 text-sm font-bold "+(temaPainel===t.id?"border-white/40 bg-white/5":"border-white/10")}><span className="size-5 rounded-full border border-white/20" style={{backgroundColor:t.cor}}/><span className="text-white/80">{t.nome}</span>{temaPainel===t.id&&<Check className="ml-auto size-4" style={{color:t.cor}}/>}</button>)}</div>
+            <p className="mt-5 rounded-xl border border-white/10 bg-black/10 p-3 text-xs leading-relaxed text-white/40">Essa personalização altera somente o painel administrativo, não a loja pública nem os dados de clientes e pedidos.</p>
+          </article>
+        </section>}{aba==="configuracoes"&&<section className="space-y-5">
           <article className={`rounded-2xl border p-5 ${lojaAberta ? "border-emerald-400/20 bg-emerald-400/5" : "border-red-400/20 bg-red-400/5"}`}>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -477,7 +528,7 @@ function Dashboard() {
         </section>}
       </main>
     </div>
-    <nav data-admin-mobile-nav="v4" aria-label="Navegação administrativa" className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-6 border-t border-white/10 bg-[#101112]/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-xl md:hidden"><button type="button" aria-label="Visão geral" aria-current={aba==="visao"?"page":undefined} onClick={()=>setAba("visao")} className={`flex min-w-0 flex-col items-center justify-center gap-1 py-1 text-[8px] font-bold sm:text-[9px] ${aba==="visao"?"text-[#ffc400]":"text-white/45"}`}><LayoutDashboard className="size-5"/><span className="whitespace-nowrap">Visão geral</span></button><button type="button" aria-label="Pedidos" aria-current={aba==="pedidos"?"page":undefined} onClick={()=>setAba("pedidos")} className={`flex min-w-0 flex-col items-center justify-center gap-1 py-1 text-[8px] font-bold sm:text-[9px] ${aba==="pedidos"?"text-[#ffc400]":"text-white/45"}`}><ClipboardList className="size-5"/><span className="whitespace-nowrap">Pedidos</span></button><button type="button" aria-label="Cardápio" aria-current={aba==="cardapio"?"page":undefined} onClick={()=>setAba("cardapio")} className={`flex min-w-0 flex-col items-center justify-center gap-1 py-1 text-[8px] font-bold sm:text-[9px] ${aba==="cardapio"?"text-[#ffc400]":"text-white/45"}`}><Utensils className="size-5"/><span className="whitespace-nowrap">Cardápio</span></button><button type="button" aria-label="Categorias" aria-current={aba==="categorias"?"page":undefined} onClick={()=>setAba("categorias")} className={`flex min-w-0 flex-col items-center justify-center gap-1 py-1 text-[8px] font-bold sm:text-[9px] ${aba==="categorias"?"text-[#ffc400]":"text-white/45"}`}><Package className="size-5"/><span className="whitespace-nowrap">Categorias</span></button><button type="button" aria-label="Clientes" aria-current={aba==="clientes"?"page":undefined} onClick={()=>setAba("clientes")} className={`flex min-w-0 flex-col items-center justify-center gap-1 py-1 text-[8px] font-bold sm:text-[9px] ${aba==="clientes"?"text-[#ffc400]":"text-white/45"}`}><Users className="size-5"/><span className="whitespace-nowrap">Clientes</span></button><button type="button" aria-label="Configurações" aria-current={aba==="configuracoes"?"page":undefined} onClick={()=>setAba("configuracoes")} className={`flex min-w-0 flex-col items-center justify-center gap-1 py-1 text-[8px] font-bold sm:text-[9px] ${aba==="configuracoes"?"text-[#ffc400]":"text-white/45"}`}><Settings className="size-5"/><span className="whitespace-nowrap">Configurações</span></button></nav>
+    <nav data-admin-mobile-nav="v4" aria-label="Navegação administrativa" className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-7 border-t border-white/10 bg-[#101112]/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-xl md:hidden"><button type="button" aria-label="Visão geral" aria-current={aba==="visao"?"page":undefined} onClick={()=>setAba("visao")} className={`flex min-w-0 flex-col items-center justify-center gap-1 py-1 text-[8px] font-bold sm:text-[9px] ${aba==="visao"?"text-[#ffc400]":"text-white/45"}`}><LayoutDashboard className="size-5"/><span className="whitespace-nowrap">Visão geral</span></button><button type="button" aria-label="Pedidos" aria-current={aba==="pedidos"?"page":undefined} onClick={()=>setAba("pedidos")} className={`flex min-w-0 flex-col items-center justify-center gap-1 py-1 text-[8px] font-bold sm:text-[9px] ${aba==="pedidos"?"text-[#ffc400]":"text-white/45"}`}><ClipboardList className="size-5"/><span className="whitespace-nowrap">Pedidos</span></button><button type="button" aria-label="Cardápio" aria-current={aba==="cardapio"?"page":undefined} onClick={()=>setAba("cardapio")} className={`flex min-w-0 flex-col items-center justify-center gap-1 py-1 text-[8px] font-bold sm:text-[9px] ${aba==="cardapio"?"text-[#ffc400]":"text-white/45"}`}><Utensils className="size-5"/><span className="whitespace-nowrap">Cardápio</span></button><button type="button" aria-label="Categorias" aria-current={aba==="categorias"?"page":undefined} onClick={()=>setAba("categorias")} className={`flex min-w-0 flex-col items-center justify-center gap-1 py-1 text-[8px] font-bold sm:text-[9px] ${aba==="categorias"?"text-[#ffc400]":"text-white/45"}`}><Package className="size-5"/><span className="whitespace-nowrap">Categorias</span></button><button type="button" aria-label="Clientes" aria-current={aba==="clientes"?"page":undefined} onClick={()=>setAba("clientes")} className={`flex min-w-0 flex-col items-center justify-center gap-1 py-1 text-[8px] font-bold sm:text-[9px] ${aba==="clientes"?"text-[#ffc400]":"text-white/45"}`}><Users className="size-5"/><span className="whitespace-nowrap">Clientes</span></button><button type="button" aria-label="Minha conta" aria-current={aba==="minha-conta"?"page" onClick={()=>setAba("minha-conta")} className={"flex min-w-0 flex-col items-center justify-center gap-1 py-1 text-[8px] font-bold sm:text-[9px] "+(aba==="minha-conta"?"text-[#ffc400]":"text-white/45")}><UserRound className="size-5"/><span className="whitespace-nowrap">Minha conta</span></button><button type="button" aria-label="Configurações" aria-current={aba==="configuracoes"?"page":undefined} onClick={()=>setAba("configuracoes")} className={`flex min-w-0 flex-col items-center justify-center gap-1 py-1 text-[8px] font-bold sm:text-[9px] ${aba==="configuracoes"?"text-[#ffc400]":"text-white/45"}`}><Settings className="size-5"/><span className="whitespace-nowrap">Configurações</span></button></nav>
     {produtoEditando && (
       <div
         className="fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 sm:items-center sm:p-4"
