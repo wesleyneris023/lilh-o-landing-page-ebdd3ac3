@@ -21,7 +21,8 @@ export function savePrintSettings(settings: PrintSettings) {
 }
 
 function escapeHtml(value: unknown) {
-  return String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char] || char));
+  const entities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"' : "&quot;", "'": "&#39;" };
+  return String(value ?? "").replace(/[&<>"']/g, char => entities[char] ?? char);
 }
 
 export function imprimirPedido(pedido: Pedido, nomeLoja = "Lilhão") {
