@@ -1,0 +1,50 @@
+name: One-time Bun lock regeneration
+
+on:
+  push:
+    branches:
+      - feat/impressao-termica-lilhao
+    paths:
+      - .github/workflows/regenerate-bun-lock-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    if: github.event.head_commit.message == 'ci: regenerate Bun lockfile once'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/impressao-termica-lilhao
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Regenerate lockfile from package.json
+        run: |
+          rm -f bun.lock
+          bun install
+
+      - name: Verify patched dependency versions
+        run: |
+          grep -F '"@tanstack/react-router@1.170.41"' bun.lock
+          grep -F '"@tanstack/react-start@1.168.60"' bun.lock
+          grep -F '"@tanstack/start-server-core@1.169.39"' bun.lock
+          bun pm ls | grep -E '@tanstack/(react-start|react-router)'
+
+      - name: Verify production build
+        run: bun run build
+
+      - name: Commit regenerated lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bun.lock
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: regenerate Bun lockfile for patched TanStack versions"
+          git push origin HEAD:feat/impressao-termica-lilhao
